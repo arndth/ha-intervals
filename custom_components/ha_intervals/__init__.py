@@ -61,6 +61,7 @@ from .const import (
 from .coordinator import IntervalsCoordinator
 from .planner import plan_move
 from .store import IntervalsStore
+from .util import to_iso
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -142,6 +143,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryAuthFailed(str(err)) from err
     except IntervalsConnectionError as err:
         raise ConfigEntryNotReady(str(err)) from err
+
+    # Altlasten geradeziehen: v0.1.0 hat jede Zeichenkette als Renndatum
+    # angenommen. Einmal beim Start normalisieren, damit bestehende
+    # Einrichtungen nach dem Update ohne Zutun funktionieren.
+    roh = entry.data.get(CONF_RACE_DATE)
+    iso = to_iso(roh)
+    if roh and iso and roh != iso:
+        _LOGGER.info("Renndatum %s auf %s normalisiert", roh, iso)
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_RACE_DATE: iso}
+        )
+    elif roh and not iso:
+        _LOGGER.warning(
+            "Renndatum %r ist unlesbar und wird ignoriert. In den Optionen "
+            "der Integration neu setzen.", roh
+        )
 
     store = IntervalsStore(hass, entry.entry_id)
     await store.async_init()

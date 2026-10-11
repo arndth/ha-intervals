@@ -22,9 +22,12 @@
     "error": {
       "auth": "Schlüssel oder Athlete-ID werden abgelehnt.",
       "connect": "intervals.icu ist nicht erreichbar.",
-      "unknown": "Unerwarteter Fehler — siehe Protokoll."
+      "unknown": "Unerwarteter Fehler — siehe Protokoll.",
+      "date": "Datum nicht lesbar. Erwartet wird JJJJ-MM-TT."
     },
-    "abort": { "already_configured": "Dieser Athlet ist bereits eingerichtet." }
+    "abort": {
+      "already_configured": "Dieser Athlet ist bereits eingerichtet."
+    }
   },
   "options": {
     "step": {

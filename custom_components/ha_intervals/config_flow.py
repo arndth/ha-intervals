@@ -7,9 +7,11 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import IntervalsAuthError, IntervalsClient, IntervalsConnectionError
+from .util import to_iso
 from .const import (
     CONF_ANTHROPIC_KEY,
     CONF_API_KEY,
@@ -28,9 +30,12 @@ STEP_USER = vol.Schema(
     {vol.Required(CONF_API_KEY): str, vol.Required(CONF_ATHLETE_ID): str}
 )
 
+# Datumswähler statt freiem Text: liefert immer JJJJ-MM-TT und macht eine
+# deutsche Eingabe wie 10.01.2026 unmöglich. to_iso() fängt zusätzlich ab,
+# was über die API statt über das Formular hereinkommt.
 STEP_RACE = vol.Schema(
     {
-        vol.Required(CONF_RACE_DATE): str,
+        vol.Required(CONF_RACE_DATE): selector.DateSelector(),
         vol.Required(CONF_RACE_DISTANCE, default=13.0): vol.Coerce(float),
         vol.Optional(CONF_RACE_GOAL, default=0): vol.Coerce(int),
     }
@@ -79,6 +84,14 @@ class IntervalsConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_race(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
+            iso = to_iso(user_input.get(CONF_RACE_DATE))
+            if iso is None:
+                return self.async_show_form(
+                    step_id="race",
+                    data_schema=STEP_RACE,
+                    errors={CONF_RACE_DATE: "date"},
+                )
+            user_input = {**user_input, CONF_RACE_DATE: iso}
             self._data.update(user_input)
             return self.async_create_entry(
                 title=f"Intervals.icu {self._data[CONF_ATHLETE_ID]}", data=self._data

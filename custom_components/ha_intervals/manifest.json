@@ -1,13 +1,20 @@
 {
   "domain": "ha_intervals",
   "name": "Intervals.icu Laufplan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "documentation": "https://github.com/arndth/ha-intervals",
   "issue_tracker": "https://github.com/arndth/ha-intervals/issues",
-  "codeowners": ["@arndth"],
+  "codeowners": [
+    "@arndth"
+  ],
   "config_flow": true,
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "dependencies": ["http", "panel_custom"],
-  "requirements": ["anthropic>=0.69.0"]
+  "dependencies": [
+    "http",
+    "panel_custom"
+  ],
+  "requirements": [
+    "anthropic>=0.69.0"
+  ]
 }

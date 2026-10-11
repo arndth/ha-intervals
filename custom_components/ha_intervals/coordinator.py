@@ -24,6 +24,7 @@ from .const import (
     HISTORY_DAYS,
 )
 from .planner import Change, Session, classify, week_start
+from .util import parse_date
 from .store import IntervalsStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -251,8 +252,14 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
 
     @property
     def race_date(self) -> date | None:
-        raw = self.entry.data.get(CONF_RACE_DATE)
-        return date.fromisoformat(raw) if raw else None
+        """Renndatum, nachsichtig gelesen.
+
+        In v0.1.0 stand hier `date.fromisoformat`. Eine deutsche Eingabe wie
+        `10.01.2026` hat damit den Dienst mit 500 beendet und das Anlegen von
+        `sensor.tage_bis_zum_rennen` verhindert. Ein unlesbares Datum darf
+        höchstens "kein Renntag" bedeuten, nie einen Absturz.
+        """
+        return parse_date(self.entry.data.get(CONF_RACE_DATE))
 
     # ── Daten fürs Panel ─────────────────────────────────────────────────
 

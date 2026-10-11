@@ -46,7 +46,9 @@ jobs:
             || { echo "Panel-Bundle fehlt — Build fehlgeschlagen"; exit 1; }
 
       - name: Tests
-        run: python3 tests/test_planner.py
+        run: |
+          python3 tests/test_planner.py
+          python3 tests/test_util.py
 
       - name: Paket schnüren
         working-directory: custom_components/ha_intervals
