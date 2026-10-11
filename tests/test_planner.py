@@ -147,6 +147,33 @@ def test_markierung_verfaelscht_die_art_nicht():
     assert classify("Intervall 8 km", "5 × 1000 m @ 4:24/km", 68, 8.0) == KIND_QUALITY
 
 
+def test_session_nimmt_alle_felder_des_koordinators():
+    """Reproduziert den Absturz aus v0.3.0/0.3.1:
+
+        Session.__init__() got an unexpected keyword argument 'syntax'
+
+    coordinator._load_plan baut planner.Session aus den Spalten der Ablage.
+    Als planbuilder.PlannedSession um `syntax` wuchs, wurde das Feld auch
+    hier übergeben — nur gab es es nicht, und die Integration kam gar nicht
+    mehr hoch. Die Testdateien fassen den Koordinator nicht an, weil er
+    Home Assistant braucht; dieser Test schließt genau diese Lücke, indem er
+    die Signatur nachstellt.
+    """
+    s = Session(
+        event_id="1",
+        day=MO,
+        kind=KIND_EASY,
+        name="Locker 7 km",
+        load=42,
+        km=7.0,
+        description="7 km locker",
+        syntax="- 7km Z2 Pace",
+    )
+    assert s.syntax == "- 7km Z2 Pace"
+    # Ohne Angabe bleibt das Feld leer, nicht None — der Export filtert darauf.
+    assert Session("2", MO, KIND_EASY, "x").syntax == ""
+
+
 def test_week_start():
     assert week_start(D(6)) == MO
     assert week_start(MO) == MO

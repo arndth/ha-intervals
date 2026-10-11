@@ -51,6 +51,11 @@ class Session:
     load: int = 0
     km: float = 0.0
     description: str = ""
+    # Die intervals.icu-Workout-Schreibweise. Das Regelwerk braucht sie nicht,
+    # aber der Koordinator füllt aus dieser Klasse auch den Export — ohne das
+    # Feld scheitert schon der Konstruktor und die Integration kommt gar
+    # nicht hoch.
+    syntax: str = ""
 
     @property
     def is_quality(self) -> bool:
