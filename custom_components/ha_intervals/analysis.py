@@ -102,6 +102,54 @@ def summarise_streams(streams: dict[str, list]) -> dict[str, Any]:
     }
 
 
+def compute_splits(streams: dict[str, list]) -> list[dict]:
+    """Kilometer-Splits aus den Roh-Streams.
+
+    Sucht die Zeitpunkte, an denen die zurückgelegte Strecke eine
+    Kilometermarke überschreitet, und rechnet daraus Dauer und mittlere
+    Herzfrequenz je Kilometer. Der angebrochene letzte Kilometer wird
+    mitgeführt und als solcher gekennzeichnet — ihn wegzulassen würde die
+    Summe der Splits von der Gesamtdistanz abweichen lassen.
+    """
+    dist = streams.get("distance") or []
+    zeit = streams.get("time") or []
+    hf = streams.get("heartrate") or []
+    if len(dist) < 2 or len(zeit) < 2:
+        return []
+
+    n = min(len(dist), len(zeit))
+    splits: list[dict] = []
+    km = 1
+    start_i = 0
+    for i in range(1, n):
+        if (dist[i] or 0) < km * 1000:
+            continue
+        dauer = (zeit[i] or 0) - (zeit[start_i] or 0)
+        puls = [h for h in hf[start_i:i] if h]
+        splits.append({
+            "km": km,
+            "sekunden": round(dauer),
+            "pace_s_km": round(dauer),      # genau ein Kilometer
+            "hf": round(sum(puls) / len(puls)) if puls else None,
+            "teil": False,
+        })
+        start_i = i
+        km += 1
+
+    rest_m = (dist[n - 1] or 0) - (km - 1) * 1000
+    if rest_m > 50:                          # unter 50 m ist es Rauschen
+        dauer = (zeit[n - 1] or 0) - (zeit[start_i] or 0)
+        puls = [h for h in hf[start_i:n] if h]
+        splits.append({
+            "km": round(rest_m / 1000, 2),
+            "sekunden": round(dauer),
+            "pace_s_km": round(dauer / (rest_m / 1000)) if rest_m else None,
+            "hf": round(sum(puls) / len(puls)) if puls else None,
+            "teil": True,
+        })
+    return splits
+
+
 async def _context(coord: IntervalsCoordinator, activity_id: str) -> dict:
     """Aktivität, 14 Tage Verlauf und die geplante Einheit des Tages."""
     acts = await coord.store.async_query(

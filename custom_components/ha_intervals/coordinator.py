@@ -23,6 +23,7 @@ from .const import (
     EVENT_ANALYSIS_READY,
     EVENT_NEW_ACTIVITY,
     HISTORY_DAYS,
+    LEGACY_MARKERS,
     PLAN_MARKER,
 )
 from .planbuilder import build_plan, summary
@@ -142,15 +143,47 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
         )
 
     @staticmethod
-    def _plan_row(e: dict) -> tuple:
+    def _parse_marker(desc: str) -> dict:
+        """Metadaten aus der eigenen Markierung lesen.
+
+        Format: `[HA-LAUFPLAN] art=locker km=5 woche=1 phase=Wiederaufbau`
+        Fremde Einträge haben keine Markierung — für die bleibt es beim
+        Erraten aus dem Text.
+        """
+        if PLAN_MARKER not in desc:
+            return {}
+        zeile = desc.split(PLAN_MARKER, 1)[1].splitlines()[0]
+        out: dict[str, str] = {}
+        for teil in zeile.split():
+            if "=" in teil:
+                k, _, v = teil.partition("=")
+                out[k] = v.replace("_", " ")
+        return out
+
+    @classmethod
+    def _plan_row(cls, e: dict) -> tuple:
         name = e.get("name") or ""
         desc = e.get("description") or ""
         load = e.get("icu_training_load") or 0
         km = (e.get("distance") or 0) / 1000.0
+
+        # Eigene Einträge: Art und Kilometer stehen in der Markierung.
+        # intervals.icu gibt `distance` bei geplanten Terminen nicht zurück,
+        # deshalb kam hier bisher überall 0 an.
+        meta = cls._parse_marker(desc)
+        if meta:
+            try:
+                km = float(meta.get("km", km))
+            except ValueError:
+                pass
+            art = meta.get("art") or classify(name, desc, load, km)
+        else:
+            art = classify(name, desc, load, km)
+
         return (
             str(e.get("id")),
             (e.get("start_date_local") or "")[:10],
-            classify(name, desc, load, km),
+            art,
             name,
             load,
             km,
@@ -525,7 +558,8 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             return {**vorschau, "ok": False, "grund": f"Kalender nicht lesbar: {err}"}
 
         for e in bestehend:
-            if PLAN_MARKER in (e.get("description") or ""):
+            beschr = e.get("description") or ""
+            if PLAN_MARKER in beschr or any(m in beschr for m in LEGACY_MARKERS):
                 try:
                     await self.client.async_delete_event(e["id"])
                     entfernt += 1
@@ -539,7 +573,10 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
                 "category": "WORKOUT",
                 "type": "Run",
                 "name": s.name,
-                "description": f"{s.description}\n\n{PLAN_MARKER} Woche {s.week} · {s.phase}",
+                "description": (
+                    f"{s.description}\n\n{PLAN_MARKER} art={s.kind} km={s.km:g} "
+                    f"woche={s.week} phase={s.phase.replace(' ', '_')}"
+                ),
                 "moving_time": int(s.km * race_pace_s * 1.15),
                 "distance": int(s.km * 1000),
                 "icu_training_load": s.load,
@@ -561,4 +598,72 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             "ersetzt": entfernt,
             "uebersprungen_vergangenheit": len(plan) - len(kuenftig),
             "fehler": fehler,
+        }
+
+    # ── Einzelnes Training ───────────────────────────────────────────────
+
+    async def async_activity_detail(self, activity_id: str) -> dict:
+        """Alles zu einem Lauf: Eckdaten, Splits, Zonen, geplante Einheit,
+        Analyse.
+
+        Die Streams werden bei jedem Aufruf frisch geholt statt gespeichert.
+        Sie sind der mit Abstand größte Posten (~3000 Punkte je Kanal), und
+        eine Detailseite wird selten geöffnet — Vorhalten kostet mehr Platz,
+        als es Zeit spart.
+        """
+        rows = await self.store.async_query(
+            "SELECT id, day, name, kind, km, seconds, load, hr_avg, pace_s_km, raw "
+            "FROM activities WHERE id = ?",
+            (str(activity_id),),
+        )
+        if not rows:
+            return {"ok": False, "grund": f"Training {activity_id} nicht gefunden."}
+
+        a = rows[0]
+        roh = {}
+        try:
+            roh = json.loads(a.get("raw") or "{}")
+        except ValueError:
+            pass
+
+        geplant = await self.store.async_query(
+            "SELECT id, name, description, load, km, kind FROM plan_events WHERE day = ?",
+            (a["day"],),
+        )
+        analyse = await self.store.async_query(
+            "SELECT created, model, verdict, prose FROM analyses WHERE activity_id = ?",
+            (str(activity_id),),
+        )
+
+        splits: list[dict] = []
+        kennzahlen: dict = {}
+        hinweis = None
+        try:
+            streams = await self.client.async_get_streams(str(activity_id))
+            from .analysis import compute_splits, summarise_streams
+
+            splits = compute_splits(streams)
+            kennzahlen = summarise_streams(streams)
+        except IntervalsConnectionError as err:
+            hinweis = f"Streams nicht abrufbar: {err}"
+
+        zonen = roh.get("icu_hr_zone_times") or []
+        return {
+            "ok": True,
+            "training": {k: a[k] for k in a if k != "raw"},
+            "splits": splits,
+            "kennzahlen": kennzahlen,
+            "zonen_minuten": [int((z or 0) // 60) for z in zonen[:5]],
+            "geplant_war": geplant[0] if geplant else None,
+            "analyse": (
+                {
+                    **analyse[0],
+                    "verdict": json.loads(analyse[0]["verdict"])
+                    if analyse[0].get("verdict")
+                    else None,
+                }
+                if analyse
+                else None
+            ),
+            "hinweis": hinweis,
         }

@@ -50,6 +50,7 @@ jobs:
           python3 tests/test_planner.py
           python3 tests/test_util.py
           python3 tests/test_planbuilder.py
+          python3 tests/test_splits.py
 
       - name: Paket schnüren
         working-directory: custom_components/ha_intervals

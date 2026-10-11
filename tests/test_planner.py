@@ -135,6 +135,18 @@ def test_unbekannte_einheit():
     assert not r.ok and r.violations[0].rule == "unbekannt"
 
 
+def test_markierung_verfaelscht_die_art_nicht():
+    """Die erste Markierung hieß "[ha_intervals]" — und enthält damit die
+    Zeichenfolge "interval". Der Klassifizierer stufte daraufhin jede
+    Einheit als Qualitätstraining ein, auch "Locker 5 km". Technischer Text
+    in Klammern darf die Trainingsart nie bestimmen."""
+    for marker in ("[ha_intervals] Woche 1", "[HA-LAUFPLAN] art=locker km=5", ""):
+        art = classify("Locker 5 km", f"5 km locker, 6:21/km.\n\n{marker}", 30, 5.0)
+        assert art == KIND_EASY, (marker, art)
+    # Echte Qualität wird weiterhin erkannt
+    assert classify("Intervall 8 km", "5 × 1000 m @ 4:24/km", 68, 8.0) == KIND_QUALITY
+
+
 def test_week_start():
     assert week_start(D(6)) == MO
     assert week_start(MO) == MO

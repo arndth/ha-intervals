@@ -143,6 +143,26 @@ el.hass = {
         wochen: DATEN.wochen.slice(-Math.max(2, Math.round(tage / 7))),
       }});
     }
+    if (service === "training_details") {
+      // Splits eines 10ers mit negativem Split und steigendem Puls
+      const paces = [336, 332, 329, 327, 325, 322, 320, 316, 311, 304];
+      return Promise.resolve({ response: {
+        ok: true,
+        training: { id: data.activity_id, day: iso(plus(-41)), name: "Hatten",
+          kind: "Run", km: 10.0, seconds: 3222, load: 61, hr_avg: 160, pace_s_km: 322 },
+        splits: paces.map((p, i) => ({ km: i + 1, sekunden: p, pace_s_km: p,
+          hf: 150 + i * 2, teil: false })).concat([
+          { km: 0.24, sekunden: 71, pace_s_km: 296, hf: 171, teil: true }]),
+        kennzahlen: { hf_mittel: 160, hf_max: 174, entkopplung_prozent: 3.8, punkte: 3222 },
+        zonen_minuten: [4, 18, 21, 9, 2],
+        geplant_war: { name: "Tempo 10 km", description: "10 km zügig, 5:20/km." },
+        analyse: { created: iso(plus(-41)), model: "claude-opus-5",
+          prose: "Sauber negativ gelaufen: die zweite Hälfte lag 11 s/km schneller "
+               + "als die erste, bei nur 3,8 % Entkopplung. Genau so soll ein "
+               + "Tempodauerlauf aussehen." },
+        hinweis: null,
+      }});
+    }
     if (service === "verschieben") {
       // Einen abgelehnten Zug nachstellen, um Konflikt und Alternativen zu sehen
       if (data.event_id === "1001" && data.modus !== "streichen") {
@@ -170,6 +190,8 @@ setTimeout(() => {
   const r = el.shadowRoot;
   const v = q.get("view");
   if (v) r.querySelector(`[data-tab="${v}"]`)?.click();
+  const det = q.get("detail");
+  if (det) setTimeout(() => r.querySelector(`[data-detail="${det}"]`)?.click(), 200);
   const m = q.get("move");
   if (m) setTimeout(() => {
     r.querySelector(`[data-move="${m}"]`)?.click();

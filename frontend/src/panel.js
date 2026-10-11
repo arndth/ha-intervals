@@ -31,6 +31,10 @@ const VIEWS = [
 
 const RANGES = [30, 60, 91];
 
+function an_text(a) {
+  return a.prose || a.verdict?.prosa || "Analyse ohne Text.";
+}
+
 const ART = {
   ruhe: "Ruhe",
   locker: "Locker",
@@ -48,6 +52,7 @@ class HaIntervalsPanel extends HTMLElement {
     this._busy = false;
     this._open = new Set(); // aufgeklappte Tabellen
     this._moving = null; // Einheit im Verschieben-Dialog
+    this._detail = null; // geöffnetes Training
     this.attachShadow({ mode: "open" });
   }
 
@@ -104,6 +109,18 @@ class HaIntervalsPanel extends HTMLElement {
       this._busy = false;
       this._render();
     }
+  }
+
+  async _openDetail(id) {
+    this._detail = { id, loading: true, data: null };
+    this._render();
+    try {
+      const res = await this._call("training_details", { activity_id: id });
+      this._detail = { id, loading: false, data: res?.response ?? null };
+    } catch (err) {
+      this._detail = { id, loading: false, error: String(err?.message || err) };
+    }
+    this._render();
   }
 
   async _move(eventId, ziel, modus) {
@@ -179,7 +196,8 @@ class HaIntervalsPanel extends HTMLElement {
       </nav>
       ${this._view === "form" || this._view === "runs" ? `<div class="filter"><span class="eyebrow">Zeitraum</span>${ranges}</div>` : ""}
       ${body}
-      ${this._moving ? this._moveDialog() : ""}`;
+      ${this._moving ? this._moveDialog() : ""}
+      ${this._detail ? this._detailSheet(p) : ""}`;
 
     this._wire();
   }
@@ -220,9 +238,13 @@ class HaIntervalsPanel extends HTMLElement {
         this._move(b.dataset.id, b.dataset.ziel, b.dataset.do)
       )
     );
+    r.querySelectorAll("[data-detail]").forEach((row) =>
+      row.addEventListener("click", () => this._openDetail(row.dataset.detail))
+    );
     r.querySelectorAll('[data-act="close"]').forEach((b) =>
       b.addEventListener("click", () => {
         this._moving = null;
+        this._detail = null;
         this._render();
       })
     );
@@ -393,20 +415,92 @@ class HaIntervalsPanel extends HTMLElement {
     const analysen = new Map((d.analysen || []).map((a) => [String(a.activity_id), a]));
     return `<section class="card">
       <div class="head"><h2>Trainings</h2><span class="eyebrow">${t.length} Einträge</span></div>
-      <div class="tablewrap">${table(
-        ["Tag", "Lauf", "km", "Zeit", "Pace", "HF", "Last", "Analyse"],
-        t.map((a) => [
-          fmt.day(a.day),
-          a.name || "—",
-          fmt.n(a.km),
-          fmt.hms(a.seconds),
-          fmt.pace(a.pace_s_km) + " /km",
-          a.hr_avg ? String(a.hr_avg) : "—",
-          String(a.load ?? "—"),
-          analysen.has(String(a.id)) ? "ja" : "—",
-        ])
-      )}</div>
+      <p class="hint">Zeile anklicken für Splits und Details.</p>
+      <div class="tablewrap"><table>
+        <thead><tr>${["Tag","Lauf","km","Zeit","Pace","HF","Last","Analyse"]
+          .map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+        <tbody>${t.map((a) => `<tr class="click" data-detail="${esc(a.id)}">
+          <td>${esc(fmt.day(a.day))}</td><td>${esc(a.name || "—")}</td>
+          <td>${esc(fmt.n(a.km))}</td><td>${esc(fmt.hms(a.seconds))}</td>
+          <td>${esc(fmt.pace(a.pace_s_km))} /km</td>
+          <td>${esc(a.hr_avg ? String(a.hr_avg) : "—")}</td>
+          <td>${esc(String(a.load ?? "—"))}</td>
+          <td>${analysen.has(String(a.id)) ? "ja" : "—"}</td></tr>`).join("")}
+        </tbody></table></div>
     </section>`;
+  }
+
+  /* ── Detailseite eines Trainings ─────────────────────────────────────── */
+
+  _detailSheet(p) {
+    const d = this._detail;
+    const head = (titel) => `<div class="head"><h2>${esc(titel)}</h2>
+      <button class="ghost sm" data-act="close">Schließen</button></div>`;
+
+    if (d.loading) return `<div class="sheet"><div class="card">${head("Lade …")}</div></div>`;
+    if (d.error || !d.data?.ok) {
+      return `<div class="sheet"><div class="card">${head("Nicht ladbar")}
+        <p class="hint">${esc(d.error || d.data?.grund || "Unbekannter Fehler")}</p></div></div>`;
+    }
+
+    const x = d.data;
+    const t = x.training || {};
+    const k = x.kennzahlen || {};
+    const sp = x.splits || [];
+
+    // Splits als Balken: die schnellste Pace ist der Bezug, langsamere Zeilen
+    // werden entsprechend länger. Ein eigenes Diagramm wäre hier Overhead —
+    // die Tabelle *ist* die Darstellung.
+    const paces = sp.map((s) => s.pace_s_km).filter(Boolean);
+    const best = paces.length ? Math.min(...paces) : 0;
+    const worst = paces.length ? Math.max(...paces) : 1;
+    const breite = (v) => (worst === best ? 100 : 30 + (70 * (worst - v)) / (worst - best));
+
+    const splitRows = sp.map((s) => `<tr>
+        <td>${s.teil ? esc(fmt.n(s.km, 2)) : s.km}</td>
+        <td>${esc(fmt.pace(s.pace_s_km))}</td>
+        <td>${esc(fmt.hms(s.sekunden))}</td>
+        <td>${esc(s.hf ? String(s.hf) : "—")}</td>
+        <td class="barcell"><span class="bar" style="width:${breite(s.pace_s_km).toFixed(0)}%;
+          background:${s.teil ? p.planGhost : p.fitness}"></span></td>
+      </tr>`).join("");
+
+    const zonen = (x.zonen_minuten || []).some((z) => z > 0)
+      ? `<div class="legend">${(x.zonen_minuten || []).map((m, i) =>
+          `<span><i class="blk" style="background:${p.zones[i]}"></i>Z${i + 1} ${m} min</span>`
+        ).join("")}</div>`
+      : "";
+
+    const plan = x.geplant_war
+      ? `<p class="prose"><b>Geplant war:</b> ${esc(x.geplant_war.name || "")} — ${esc(x.geplant_war.description || "")}</p>`
+      : "";
+
+    const an = x.analyse
+      ? `<p class="prose">${esc(an_text(x.analyse))}</p>`
+      : `<p class="hint">Keine Analyse zu diesem Lauf.</p>`;
+
+    return `<div class="sheet"><div class="card wide">
+      ${head(t.name || "Training")}
+      <p class="hint">${esc(fmt.day(t.day))} · ${esc(t.kind || "")}</p>
+      <div class="verdict">
+        <div><span class="k">Distanz</span><span class="v">${esc(fmt.n(t.km))} km</span></div>
+        <div><span class="k">Zeit</span><span class="v">${esc(fmt.hms(t.seconds))}</span></div>
+        <div><span class="k">Pace</span><span class="v">${esc(fmt.pace(t.pace_s_km))}</span></div>
+        <div><span class="k">HF ø</span><span class="v">${esc(t.hr_avg || "—")}</span></div>
+        <div><span class="k">Last</span><span class="v">${esc(t.load ?? "—")}</span></div>
+        ${k.entkopplung_prozent !== undefined
+          ? `<div><span class="k">Entkopplung</span><span class="v">${esc(fmt.n(k.entkopplung_prozent))} %</span></div>`
+          : ""}
+      </div>
+      ${zonen}
+      ${plan}
+      ${an}
+      ${sp.length
+        ? `<div class="tablewrap"><table>
+             <thead><tr><th>km</th><th>Pace</th><th>Zeit</th><th>HF</th><th></th></tr></thead>
+             <tbody>${splitRows}</tbody></table></div>`
+        : `<p class="hint">${esc(x.hinweis || "Keine Streams vorhanden — ohne sie gibt es keine Splits.")}</p>`}
+    </div></div>`;
   }
 
   /* ── Bausteine ───────────────────────────────────────────────────────── */
@@ -536,7 +630,20 @@ class HaIntervalsPanel extends HTMLElement {
       .planrow .load { display:none; } }
     .sheet { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9;
       display:flex; align-items:center; justify-content:center; padding:20px; }
-    .sheet .card { max-width:520px; width:100%; margin:0; max-height:80vh; overflow:auto; }
+    .sheet .card { max-width:520px; width:100%; margin:0; max-height:84vh; overflow:auto; }
+    .sheet .card.wide { max-width:680px; }
+    tr.click { cursor:pointer; }
+    tr.click:hover td { background:var(--plane); }
+    .barcell { width:38%; padding-right:0; }
+    .bar { display:block; height:7px; border-radius:3px; }
+    .verdict { display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr));
+      gap:1px; background:var(--rule); border:1px solid var(--rule);
+      border-radius:8px; overflow:hidden; margin:12px 0; }
+    .verdict > div { background:var(--surface); padding:9px 11px; }
+    .verdict .k { display:block; font-family:var(--mono); font-size:9.5px;
+      letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-3); }
+    .verdict .v { font-family:var(--mono); font-size:14px; font-weight:600;
+      font-variant-numeric:tabular-nums; }
     .note { border-top:1px solid var(--rule); margin-top:14px; padding-top:12px; font-size:13px; }
     .note ul { margin:6px 0 10px; padding-left:18px; color:var(--ink-2); }
     @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }

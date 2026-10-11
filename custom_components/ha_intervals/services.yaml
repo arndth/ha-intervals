@@ -96,3 +96,17 @@ plan_erstellen:
       selector: { text: }
     entry_id:
       selector: { text: }
+
+training_details:
+  name: Training im Detail
+  description: >-
+    Eckdaten, Kilometer-Splits, Zonenzeiten, die geplante Einheit des Tages
+    und die Analyse zu einem einzelnen Lauf. Die Splits werden bei jedem
+    Aufruf frisch aus den Streams gerechnet.
+  fields:
+    activity_id:
+      required: true
+      description: ID der Aktivität in intervals.icu.
+      selector: { text: }
+    entry_id:
+      selector: { text: }

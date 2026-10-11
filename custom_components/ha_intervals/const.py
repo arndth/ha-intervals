@@ -40,6 +40,7 @@ SERVICE_ANALYSE: Final = "analysieren"
 SERVICE_GET_PLAN: Final = "plan_abfragen"
 SERVICE_GET_DATA: Final = "daten_abfragen"
 SERVICE_BUILD_PLAN: Final = "plan_erstellen"
+SERVICE_DETAIL: Final = "training_details"
 
 # ── Events auf dem HA-Bus ────────────────────────────────────────────────
 EVENT_NEW_ACTIVITY: Final = f"{DOMAIN}_training_neu"
@@ -51,7 +52,14 @@ EVENT_ANALYSIS_READY: Final = f"{DOMAIN}_analyse_fertig"
 # Integration beim erneuten Erstellen ihre eigenen Einträge und räumt sie weg,
 # statt den Kalender zu verdoppeln. Von Hand angelegte Einheiten bleiben
 # unberührt — sie tragen die Markierung nicht.
-PLAN_MARKER: Final = "[ha_intervals]"
+#
+# Die Markierung trägt die Metadaten mit, statt sie später aus dem Text zu
+# erraten: Art, Kilometer, Woche, Phase. Das Raten war nicht nur ungenau,
+# sondern falsch — die alte Markierung "[ha_intervals]" enthält die
+# Zeichenfolge "interval", und der Klassifizierer hat daraufhin jede Einheit
+# als Qualitätstraining eingestuft, auch "Locker 5 km".
+PLAN_MARKER: Final = "[HA-LAUFPLAN]"
+LEGACY_MARKERS: Final = ("[ha_intervals]",)
 
 # ── Trainingsarten ───────────────────────────────────────────────────────
 # "Qualität" heißt: zehrt so, dass am Folgetag nichts Hartes mehr geht.

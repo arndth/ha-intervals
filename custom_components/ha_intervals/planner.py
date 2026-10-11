@@ -16,6 +16,7 @@ laufendes HA testen lässt.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
@@ -393,7 +394,10 @@ def classify(name: str, description: str, load: int, km: float) -> str:
     Nutzer blockiert. Wer es genau will, trägt in intervals.icu eine
     Kategorie ein; die hat dann Vorrang.
     """
-    text = f"{name} {description}".lower()
+    # Markierungen und alles in eckigen Klammern entfernen. Sonst entscheidet
+    # technischer Text über die Trainingsart — genau daran ist die erste
+    # Fassung gescheitert.
+    text = re.sub(r"\[[^\]]*\]", " ", f"{name} {description}").lower()
     if load == 0:
         return KIND_REST
     if any(w in text for w in ("long", "lang", "dauerlauf lang")):

@@ -55,6 +55,8 @@ curl -X POST "http://192.168.1.69:8123/api/services/ha_intervals/verschieben?ret
 | `ha_intervals.verschieben` | verschieben / tauschen / streichen |
 | `ha_intervals.sync` | sofort von intervals.icu holen |
 | `ha_intervals.analysieren` | einen Lauf bewerten lassen |
+| `ha_intervals.plan_erstellen` | 13-Wochen-Plan rechnen und schreiben (Trockenlauf ist Vorgabe) |
+| `ha_intervals.training_details` | Eckdaten, Splits, Zonen und Analyse eines Laufs |
 | `ha_intervals.umplanen` | Restwoche neu planen *(noch nicht fertig)* |
 
 Antwort von `verschieben` bei einer Ablehnung — die `alternativen` sind
@@ -174,7 +176,9 @@ eigenen langlebigen Token.
 | Regelwerk fürs Verschieben | fertig, 12 Tests |
 | Services und Events | fertig |
 | Panel: Form, Trainingsplan, Bestzeiten, Trainings | fertig, hell und dunkel geprüft |
+| Detailseite je Training mit Kilometer-Splits | fertig |
+| Plangenerator mit Tempoprogression | fertig, 16 Tests |
 | Verschieben aus dem Panel samt Konfliktanzeige | fertig |
 | KI-Einzelanalyse | fertig, ungetestet gegen die echte API |
-| Wochen-Umplanung | noch nicht implementiert |
+| Wochen-Umplanung (reagiert auf tatsächliches Training) | noch nicht implementiert |
 | Pace-Dauer-Kurve (echte Bestzeiten aus Streams) | noch nicht implementiert |
