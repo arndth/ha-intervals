@@ -69,3 +69,23 @@ plan_abfragen:
   fields:
     entry_id:
       selector: { text: }
+
+plan_erstellen:
+  name: Trainingsplan erstellen
+  description: >-
+    Rechnet einen periodisierten 13-Wochen-Plan auf den Renntag und schreibt
+    ihn nach intervals.icu. Wiederholbar — eigene Einträge werden ersetzt,
+    von Hand angelegte Einheiten bleiben unberührt.
+  fields:
+    trocken:
+      default: true
+      description: >-
+        Nur rechnen und anzeigen, nichts schreiben. Vorgabe ist an; erst mit
+        "false" landet der Plan im Kalender.
+      selector: { boolean: }
+    ziel_pace:
+      description: Angestrebtes Renntempo als MM:SS pro Kilometer.
+      example: "5:00"
+      selector: { text: }
+    entry_id:
+      selector: { text: }

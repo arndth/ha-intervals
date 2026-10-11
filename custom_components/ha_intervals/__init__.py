@@ -52,6 +52,7 @@ from .const import (
     PANEL_STATIC_PATH,
     PANEL_URL_PATH,
     SERVICE_ANALYSE,
+    SERVICE_BUILD_PLAN,
     SERVICE_GET_DATA,
     SERVICE_GET_PLAN,
     SERVICE_MOVE,
@@ -95,6 +96,17 @@ ANALYSE_SCHEMA = vol.Schema(
 )
 
 SIMPLE_SCHEMA = vol.Schema({vol.Optional("entry_id"): cv.string})
+
+BUILD_PLAN_SCHEMA = vol.Schema(
+    {
+        # Vorgabe ist der Trockenlauf. Ein Dienst, der beim ersten Aufruf
+        # ungefragt 39 Termine in einen fremden Kalender schreibt, wäre eine
+        # unangenehme Überraschung.
+        vol.Optional("trocken", default=True): cv.boolean,
+        vol.Optional("ziel_pace"): cv.string,
+        vol.Optional("entry_id"): cv.string,
+    }
+)
 
 DATA_SCHEMA = vol.Schema(
     {
@@ -188,7 +200,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_REPLAN,
                 SERVICE_ANALYSE,
                 SERVICE_GET_PLAN,
-                SERVICE_GET_DATA,
+                SERVICE_BUILD_PLAN,
+    SERVICE_GET_DATA,
             ):
                 hass.services.async_remove(DOMAIN, svc)
     return ok
@@ -380,8 +393,31 @@ def _async_register_services(hass: HomeAssistant) -> None:
         c = _coordinator(hass, call)
         return await c.async_panel_data(call.data.get("tage", 91))
 
+    async def _build_plan(call: ServiceCall) -> ServiceResponse:
+        c = _coordinator(hass, call)
+        roh = call.data.get("ziel_pace")
+        if roh:
+            try:
+                m, sek = str(roh).split(":")
+                pace = int(m) * 60 + int(sek)
+            except ValueError:
+                raise HomeAssistantError(
+                    f"'{roh}' ist keine Pace. Erwartet wird MM:SS, etwa 5:00."
+                ) from None
+        else:
+            pace = 300
+        result = await c.async_build_plan(call.data.get("trocken", True), pace)
+        if result.get("ok") and not result.get("trocken"):
+            hass.bus.async_fire(EVENT_PLAN_CHANGED, {
+                "quelle": "plan_erstellen",
+                "geschrieben": result.get("geschrieben"),
+                "ersetzt": result.get("ersetzt"),
+            })
+        return result
+
     for name, handler, schema in (
         (SERVICE_SYNC, _sync, SIMPLE_SCHEMA),
+        (SERVICE_BUILD_PLAN, _build_plan, BUILD_PLAN_SCHEMA),
         (SERVICE_GET_DATA, _get_data, DATA_SCHEMA),
         (SERVICE_MOVE, _move, MOVE_SCHEMA),
         (SERVICE_REPLAN, _replan, REPLAN_SCHEMA),

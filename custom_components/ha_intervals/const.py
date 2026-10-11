@@ -39,12 +39,19 @@ SERVICE_REPLAN: Final = "umplanen"
 SERVICE_ANALYSE: Final = "analysieren"
 SERVICE_GET_PLAN: Final = "plan_abfragen"
 SERVICE_GET_DATA: Final = "daten_abfragen"
+SERVICE_BUILD_PLAN: Final = "plan_erstellen"
 
 # ── Events auf dem HA-Bus ────────────────────────────────────────────────
 EVENT_NEW_ACTIVITY: Final = f"{DOMAIN}_training_neu"
 EVENT_PLAN_CHANGED: Final = f"{DOMAIN}_plan_geaendert"
 EVENT_PLAN_CONFLICT: Final = f"{DOMAIN}_plan_konflikt"
 EVENT_ANALYSIS_READY: Final = f"{DOMAIN}_analyse_fertig"
+
+# Markierung in der Beschreibung jedes erzeugten Eintrags. Daran erkennt die
+# Integration beim erneuten Erstellen ihre eigenen Einträge und räumt sie weg,
+# statt den Kalender zu verdoppeln. Von Hand angelegte Einheiten bleiben
+# unberührt — sie tragen die Markierung nicht.
+PLAN_MARKER: Final = "[ha_intervals]"
 
 # ── Trainingsarten ───────────────────────────────────────────────────────
 # "Qualität" heißt: zehrt so, dass am Folgetag nichts Hartes mehr geht.

@@ -22,7 +22,9 @@ from .const import (
     EVENT_ANALYSIS_READY,
     EVENT_NEW_ACTIVITY,
     HISTORY_DAYS,
+    PLAN_MARKER,
 )
+from .planbuilder import build_plan, summary
 from .planner import Change, Session, classify, week_start
 from .util import parse_date
 from .store import IntervalsStore
@@ -30,6 +32,16 @@ from .store import IntervalsStore
 _LOGGER = logging.getLogger(__name__)
 
 PLAN_HORIZON_DAYS = 120
+
+# Was als Lauf zählt. intervals.icu nimmt jede Sportart auf — in Arndts Daten
+# standen "Tauchen" (0 km) und "Fußball indoor" (2,4 km bei 8:26/km) zwischen
+# den Läufen und haben Wochenkilometer wie Bestzeiten verfälscht.
+RUN_TYPES = ("run", "trailrun", "virtualrun", "treadmill")
+
+
+def is_run(activity: dict | str | None) -> bool:
+    typ = activity.get("kind") or activity.get("type") if isinstance(activity, dict) else activity
+    return bool(typ) and str(typ).lower().replace(" ", "") in RUN_TYPES
 
 
 class IntervalsCoordinator(DataUpdateCoordinator[dict]):
@@ -100,7 +112,9 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             )
 
         woche = await self.store.async_query(
-            "SELECT COALESCE(SUM(km), 0) AS km FROM activities WHERE day >= ?",
+            "SELECT COALESCE(SUM(km), 0) AS km FROM activities "
+            "WHERE day >= ? AND LOWER(REPLACE(kind, ' ', '')) IN "
+            "('run','trailrun','virtualrun','treadmill')",
             (week_start(today).isoformat(),),
         )
 
@@ -297,18 +311,20 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             "FROM analyses ORDER BY created DESC LIMIT 20"
         )
 
+        laeufe = [a for a in aktivitaeten if is_run(a)]
+        andere = len(aktivitaeten) - len(laeufe)
+
         return {
             "stand": heute.isoformat(),
+            "andere_sportarten": andere,
             "renntag": self.race_date.isoformat() if self.race_date else None,
             "tage_bis_rennen": (self.race_date - heute).days
             if self.race_date
             else None,
             "verlauf": verlauf,
-            "wochen": self._weekly(aktivitaeten),
-            "trainings": [
-                {k: a[k] for k in a if k != "raw"} for a in aktivitaeten[:60]
-            ],
-            "bestzeiten": self._best_efforts(aktivitaeten),
+            "wochen": self._weekly(laeufe),
+            "trainings": [{k: a[k] for k in a if k != "raw"} for a in laeufe[:60]],
+            "bestzeiten": self._best_efforts(laeufe),
             "plan": [
                 {
                     "event_id": s.event_id,
@@ -407,3 +423,100 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
                 }
             )
         return beste
+
+    # ── Plan erzeugen ────────────────────────────────────────────────────
+
+    async def async_build_plan(self, dry_run: bool, race_pace_s: int) -> dict:
+        """Plan rechnen und auf Wunsch nach intervals.icu schreiben.
+
+        Wiederholbar: vor dem Schreiben werden die eigenen Einträge im
+        Planungsfenster gelöscht. Erkannt werden sie an PLAN_MARKER in der
+        Beschreibung — von Hand angelegte Einheiten bleiben stehen.
+        """
+        renntag = self.race_date
+        if not renntag:
+            return {"ok": False, "grund": "Kein Renndatum gesetzt."}
+
+        plan = build_plan(renntag, race_pace_s)
+        wochen = summary(plan)
+        vorschau = {
+            "ok": True,
+            "trocken": dry_run,
+            "renntag": renntag.isoformat(),
+            "ziel_pace": f"{race_pace_s // 60}:{race_pace_s % 60:02d}",
+            "einheiten": len(plan),
+            "davon_kuenftig": len([s for s in plan if s.day >= date.today()]),
+            "gesamt_km": round(sum(s.km for s in plan), 1),
+            "wochen": wochen,
+            "plan": [
+                {
+                    "tag": s.day.isoformat(),
+                    "woche": s.week,
+                    "phase": s.phase,
+                    "art": s.kind,
+                    "name": s.name,
+                    "km": s.km,
+                    "last": s.load,
+                    "beschreibung": s.description,
+                }
+                for s in plan
+            ],
+        }
+        if dry_run:
+            return vorschau
+
+        # Nur die Zukunft anfassen. Ohne das würde ein erneuter Aufruf mitten
+        # im Plan die bereits vergangenen Wochen löschen und neu schreiben —
+        # damit wäre nicht mehr nachvollziehbar, was ursprünglich geplant war
+        # und was tatsächlich gelaufen ist. Genau das ist der Unterschied
+        # zwischen "Plan anpassen" und "Geschichte umschreiben".
+        heute = date.today()
+        kuenftig = [s for s in plan if s.day >= heute]
+        if not kuenftig:
+            return {**vorschau, "ok": False, "grund": "Alle Planwochen liegen in der Vergangenheit."}
+
+        von, bis = min(s.day for s in kuenftig), max(s.day for s in kuenftig)
+        entfernt = 0
+        try:
+            bestehend = await self.client.async_get_events(von, bis)
+        except IntervalsConnectionError as err:
+            return {**vorschau, "ok": False, "grund": f"Kalender nicht lesbar: {err}"}
+
+        for e in bestehend:
+            if PLAN_MARKER in (e.get("description") or ""):
+                try:
+                    await self.client.async_delete_event(e["id"])
+                    entfernt += 1
+                except IntervalsConnectionError:
+                    _LOGGER.warning("Alter Eintrag %s nicht löschbar", e.get("id"))
+
+        geschrieben, fehler = 0, []
+        for s in kuenftig:
+            payload = {
+                "start_date_local": f"{s.day.isoformat()}T00:00:00",
+                "category": "WORKOUT",
+                "type": "Run",
+                "name": s.name,
+                "description": f"{s.description}\n\n{PLAN_MARKER} Woche {s.week} · {s.phase}",
+                "moving_time": int(s.km * race_pace_s * 1.15),
+                "distance": int(s.km * 1000),
+                "icu_training_load": s.load,
+            }
+            try:
+                await self.client.async_create_event(payload)
+                geschrieben += 1
+            except IntervalsConnectionError as err:
+                fehler.append({"tag": s.day.isoformat(), "fehler": str(err)})
+
+        await self.store.async_log_plan(
+            "-", "plan_erstellt", f"{geschrieben} Einheiten, {entfernt} ersetzt"
+        )
+        await self.async_request_refresh()
+        return {
+            **vorschau,
+            "trocken": False,
+            "geschrieben": geschrieben,
+            "ersetzt": entfernt,
+            "uebersprungen_vergangenheit": len(plan) - len(kuenftig),
+            "fehler": fehler,
+        }
