@@ -102,6 +102,39 @@ def test_andere_pace_verschiebt_alle_vorgaben():
     assert "4:30" in rt.description
 
 
+def test_progression_startet_beim_heutigen_stand():
+    """Ohne Progression stünden in Woche 7 Intervalle schneller als das
+    aktuelle Wettkampftempo — unausführbar."""
+    p = build_plan(RENNEN, 270, start_pace_s=312)   # Ziel 4:30, heute 5:12
+    w1 = [s for s in p if s.week == 1 and s.kind == KIND_EASY][0]
+    w13 = [s for s in p if s.week == 13 and "WETTKAMPF" in s.name][0]
+    assert "6:21" in w1.description, w1.description   # 312 × 1,22
+    assert "4:30" in w13.description, w13.description
+
+
+def test_progression_erreicht_das_ziel_vor_dem_rennen():
+    p = build_plan(RENNEN, 270, start_pace_s=312)
+    rt = [s for s in p if "Renntempo" in s.name]
+    assert rt, "keine Renntempo-Einheiten"
+    # Die Renntempo-Einheiten liegen in den Wochen 11 und 12, also nach dem
+    # Umschaltpunkt bei 80 % der Planlänge.
+    for s in rt:
+        assert "4:30" in s.description, (s.week, s.description)
+
+
+def test_ohne_startpace_bleibt_alles_beim_ziel():
+    a = build_plan(RENNEN, PACE)
+    b = build_plan(RENNEN, PACE, start_pace_s=None)
+    assert [x.description for x in a] == [x.description for x in b]
+
+
+def test_schnellerer_start_als_ziel_wird_ignoriert():
+    """Wer schon schneller ist als sein Ziel, trainiert nicht langsamer."""
+    p = build_plan(RENNEN, 300, start_pace_s=270)
+    w1 = [s for s in p if s.week == 1 and s.kind == KIND_EASY][0]
+    assert "6:06" in w1.description   # 300 × 1,22, also Zielbezug
+
+
 def test_summary():
     wo = summary(plan())
     assert len(wo) == 13

@@ -15,6 +15,7 @@ from .const import (
     CONF_ANTHROPIC_KEY,
     CONF_MODEL,
     CONF_RACE_DATE,
+    CONF_RACE_DISTANCE,
     CONF_SCAN_INTERVAL,
     DEFAULT_MODEL,
     DEFAULT_SCAN_INTERVAL,
@@ -426,7 +427,39 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
 
     # ── Plan erzeugen ────────────────────────────────────────────────────
 
-    async def async_build_plan(self, dry_run: bool, race_pace_s: int) -> dict:
+    async def async_estimate_pace(self, distance_km: float) -> tuple[int | None, dict | None]:
+        """Heutiges Wettkampftempo über `distance_km`, aus den echten Läufen.
+
+        Nach Riegel: T2 = T1 × (D2/D1)^1.06. Als Bezug dient der Lauf der
+        letzten 120 Tage mit der besten Pace über mindestens 3 km — kürzere
+        Strecken verzerren die Hochrechnung zu stark.
+
+        Zweck ist nicht die Prognose, sondern ein ehrlicher Startpunkt für
+        die Tempoprogression: die ersten Wochen sollen laufbar sein.
+        """
+        ab = (date.today() - timedelta(days=120)).isoformat()
+        rows = await self.store.async_query(
+            "SELECT id, day, name, km, seconds FROM activities "
+            "WHERE day >= ? AND km >= 3 AND seconds > 0 "
+            "AND LOWER(REPLACE(kind, ' ', '')) IN "
+            "('run','trailrun','virtualrun','treadmill') "
+            "ORDER BY seconds / km ASC LIMIT 1",
+            (ab,),
+        )
+        if not rows:
+            return None, None
+        r = rows[0]
+        hoch = r["seconds"] * (distance_km / r["km"]) ** 1.06
+        return round(hoch / distance_km), {
+            "tag": r["day"],
+            "name": r["name"],
+            "km": round(r["km"], 1),
+            "pace_s_km": round(r["seconds"] / r["km"]),
+        }
+
+    async def async_build_plan(
+        self, dry_run: bool, race_pace_s: int, start_pace_s: int | None = None
+    ) -> dict:
         """Plan rechnen und auf Wunsch nach intervals.icu schreiben.
 
         Wiederholbar: vor dem Schreiben werden die eigenen Einträge im
@@ -437,13 +470,22 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
         if not renntag:
             return {"ok": False, "grund": "Kein Renndatum gesetzt."}
 
-        plan = build_plan(renntag, race_pace_s)
+        distanz = float(self.cfg(CONF_RACE_DISTANCE, 13.0) or 13.0)
+        bezug = None
+        if start_pace_s is None:
+            start_pace_s, bezug = await self.async_estimate_pace(distanz)
+
+        plan = build_plan(renntag, race_pace_s, start_pace_s)
         wochen = summary(plan)
         vorschau = {
             "ok": True,
             "trocken": dry_run,
             "renntag": renntag.isoformat(),
             "ziel_pace": f"{race_pace_s // 60}:{race_pace_s % 60:02d}",
+            "start_pace": (
+                f"{start_pace_s // 60}:{start_pace_s % 60:02d}" if start_pace_s else None
+            ),
+            "bezugslauf": bezug,
             "einheiten": len(plan),
             "davon_kuenftig": len([s for s in plan if s.day >= date.today()]),
             "gesamt_km": round(sum(s.km for s in plan), 1),

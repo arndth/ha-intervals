@@ -112,7 +112,30 @@ def _kind_for(name: str) -> str:
     return KIND_EASY
 
 
-def build_plan(race_date: date, race_pace_s: int) -> list[PlannedSession]:
+def _week_pace(week: int, weeks: int, start_s: int, goal_s: int) -> int:
+    """Bezugstempo der Woche.
+
+    Die Vorgaben einer Einheit richten sich nach dem Leistungsstand, den man
+    *in dieser Woche* hat — nicht nach dem, den man am Renntag haben will.
+    Sonst stehen in Woche 7 Intervalle, die schneller sind als das aktuelle
+    Wettkampftempo: unausführbar, und die Einheit verfehlt ihren Zweck.
+
+    Deshalb wandert das Bezugstempo von `start_s` zum Ziel und erreicht es in
+    der Schärfungsphase (etwa 80 % der Planlänge). Die letzten Wochen laufen
+    dann tatsächlich im Zieltempo — da muss es sitzen.
+    """
+    if start_s is None or start_s <= goal_s:
+        return goal_s
+    ziel_ab = max(1, int(weeks * 0.8))
+    if week >= ziel_ab:
+        return goal_s
+    anteil = (week - 1) / max(1, ziel_ab - 1)
+    return round(start_s + (goal_s - start_s) * anteil)
+
+
+def build_plan(
+    race_date: date, race_pace_s: int, start_pace_s: int | None = None
+) -> list[PlannedSession]:
     """13 Wochen rückwärts vom Renntag.
 
     Der Renntag muss ein Sonntag sein — die Vorlage legt die lange Einheit
@@ -135,6 +158,13 @@ def build_plan(race_date: date, race_pace_s: int) -> list[PlannedSession]:
             if letzte_woche and offset == 6:
                 tag = race_date
             kind = _kind_for(name)
+            # Der Wettkampf selbst läuft immer im Zieltempo, egal wo die
+            # Progression gerade steht.
+            bezug = (
+                race_pace_s
+                if key == "rennen"
+                else _week_pace(w + 1, weeks, start_pace_s, race_pace_s)
+            )
             out.append(
                 PlannedSession(
                     day=tag,
@@ -142,7 +172,7 @@ def build_plan(race_date: date, race_pace_s: int) -> list[PlannedSession]:
                     name=f"{name} {km:g} km" if name != "WETTKAMPF" else f"WETTKAMPF {km:g} km",
                     km=float(km),
                     load=round(km * LOAD_FACTOR[kind]),
-                    description=_describe(key, km, race_pace_s),
+                    description=_describe(key, km, bezug),
                     week=w + 1,
                     phase=phase,
                 )

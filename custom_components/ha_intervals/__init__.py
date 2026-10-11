@@ -104,6 +104,9 @@ BUILD_PLAN_SCHEMA = vol.Schema(
         # unangenehme Überraschung.
         vol.Optional("trocken", default=True): cv.boolean,
         vol.Optional("ziel_pace"): cv.string,
+        # Ohne Angabe wird der heutige Stand aus den Läufen der letzten
+        # 120 Tage geschätzt.
+        vol.Optional("start_pace"): cv.string,
         vol.Optional("entry_id"): cv.string,
     }
 )
@@ -406,7 +409,19 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 ) from None
         else:
             pace = 300
-        result = await c.async_build_plan(call.data.get("trocken", True), pace)
+        start = call.data.get("start_pace")
+        start_s = None
+        if start:
+            try:
+                m, sek = str(start).split(":")
+                start_s = int(m) * 60 + int(sek)
+            except ValueError:
+                raise HomeAssistantError(
+                    f"'{start}' ist keine Pace. Erwartet wird MM:SS."
+                ) from None
+        result = await c.async_build_plan(
+            call.data.get("trocken", True), pace, start_s
+        )
         if result.get("ok") and not result.get("trocken"):
             hass.bus.async_fire(EVENT_PLAN_CHANGED, {
                 "quelle": "plan_erstellen",

@@ -85,7 +85,14 @@ plan_erstellen:
       selector: { boolean: }
     ziel_pace:
       description: Angestrebtes Renntempo als MM:SS pro Kilometer.
-      example: "5:00"
+      example: "4:30"
+      selector: { text: }
+    start_pace:
+      description: >-
+        Heutiges Wettkampftempo als MM:SS. Ohne Angabe wird es aus dem besten
+        Lauf der letzten 120 Tage geschätzt. Die Tempovorgaben wandern von
+        hier zum Ziel, damit die ersten Wochen laufbar sind.
+      example: "5:12"
       selector: { text: }
     entry_id:
       selector: { text: }
