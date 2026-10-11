@@ -18,6 +18,7 @@ import {
   formStatus,
   loadChart,
   table,
+  vo2Chart,
   volumeChart,
   zonesChart,
 } from "./charts.js";
@@ -178,7 +179,7 @@ class HaIntervalsPanel extends HTMLElement {
           : this._view === "plan"
           ? this._viewPlan(d, p)
           : this._view === "best"
-          ? this._viewBest(d)
+          ? this._viewBest(d, p)
           : this._viewRuns(d);
     }
 
@@ -321,6 +322,12 @@ class HaIntervalsPanel extends HTMLElement {
           woche?.soll_km ? `/ ${fmt.n(woche.soll_km, 0)} km` : "km",
           woche?.soll_km ? `${Math.round((woche.km / woche.soll_km) * 100)} % vom Soll` : null
         )}
+        ${
+          d.vo2max?.aktuell
+            ? this._tile("VO2max", fmt.n(d.vo2max.aktuell), "ml/kg/min",
+                `bester aus 42 Läufen · HFmax ${d.vo2max.hr_max}`, p.fitness)
+            : this._tile("VO2max", "—", "", "HFmax in den Optionen setzen")
+        }
         ${this._tile(
           "Geplant",
           String((d.plan || []).length),
@@ -458,12 +465,36 @@ class HaIntervalsPanel extends HTMLElement {
 
   /* ── Ansicht: Bestzeiten ─────────────────────────────────────────────── */
 
-  _viewBest(d) {
+  _viewBest(d, p) {
+    const v = d.vo2max || {};
+    const chart = vo2Chart(v.verlauf, p);
+    const offen = this._open.has("vo2");
+    const vo2 = `<section class="card">
+      <div class="head">
+        <h2>VO2max</h2>
+        ${chart.table ? `<button class="ghost sm" data-table="vo2">${offen ? "Diagramm" : "Tabelle"}</button>` : ""}
+      </div>
+      <p class="hint">
+        Geschätzt nach dem Verfahren von Runalyze: aus der Herzfrequenz wird
+        abgeleitet, welchen Anteil der VO2max ein Lauf abgerufen hat, und die
+        Geschwindigkeit auf 100 % hochgerechnet.
+        ${v.hr_max ? `HFmax ${v.hr_max}.` : "Ohne HFmax wird nichts gerechnet."}
+        ${v.korrektur && v.korrektur !== 1
+          ? ` Korrektur ×${fmt.n(v.korrektur, 2)}.`
+          : " Unkalibriert — der Verlauf zählt, nicht der Absolutwert."}
+      </p>
+      ${offen && chart.table
+        ? `<div class="tablewrap">${chart.table}</div>`
+        : `<div class="scroll" style="--mw:${chart.minWidth}px">${chart.svg}</div>`}
+    </section>`;
+
     const b = d.bestzeiten || [];
     if (!b.length) {
-      return `<section class="card"><p class="hint">Noch keine Läufe, die einer Distanzklasse zugeordnet werden konnten.</p></section>`;
+      return vo2 + `<section class="card empty"><b>Keine Distanzklassen belegt</b>
+        <p class="hint">Sobald Läufe nahe 5, 10 oder 13 km vorliegen, stehen hier
+        die schnellsten je Klasse.</p></section>`;
     }
-    return `<section class="card">
+    return vo2 + `<section class="card">
       <div class="head"><h2>Schnellste Läufe je Distanz</h2></div>
       <p class="hint">
         Gesamtschnitt eines Laufs, <b>nicht</b> das schnellste Teilstück darin.
@@ -567,6 +598,9 @@ class HaIntervalsPanel extends HTMLElement {
         <div><span class="k">Pace</span><span class="v">${esc(fmt.pace(t.pace_s_km))}</span></div>
         <div><span class="k">HF ø</span><span class="v">${esc(t.hr_avg || "—")}</span></div>
         <div><span class="k">Last</span><span class="v">${esc(t.load ?? "—")}</span></div>
+        ${t.vo2max
+          ? `<div><span class="k">VO2max</span><span class="v">${esc(fmt.n(t.vo2max))}</span></div>`
+          : ""}
         ${k.entkopplung_prozent !== undefined
           ? `<div><span class="k">Entkopplung</span><span class="v">${esc(fmt.n(k.entkopplung_prozent))} %</span></div>`
           : ""}

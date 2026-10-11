@@ -107,6 +107,37 @@ unberührt.
 
 ---
 
+## VO2max
+
+Geschätzt nach dem Verfahren von Runalyze: aus der Durchschnitts-Herzfrequenz
+wird abgeleitet, welchen Anteil der VO2max ein Lauf abgerufen hat, die
+Geschwindigkeit auf 100 % hochgerechnet und in die ACSM-Gleichung für
+Laufökonomie eingesetzt.
+
+```
+speedAchieved   = distance_m × 60 / duration_s            [m/min]
+%VO2max_fromHR  = e^((avgHR/HRmax − 1.00466) / 0.68725)
+speedAt100%     = speedAchieved / %VO2max_fromHR
+VO2max          = (−4.6 + 0.182253·s + 0.000104·s²) × Korrekturfaktor
+```
+
+Drei Grenzen, die der Code durchsetzt statt sie zu verschweigen:
+
+- **Ohne HFmax wird nichts gerechnet.** Der Wert wird nicht aus den Daten
+  geschätzt — der höchste gemessene Durchschnitt ist ein Beobachtungs-, kein
+  Maximalwert, und fünf Schläge Abweichung verschieben das Ergebnis um gut
+  zwei Punkte. HFmax steht in den Optionen.
+- **Nur gleichmäßige Läufe** ab 2 km, 10 Minuten und 65–102 % der HFmax.
+  Intervalle und Sprints liefern Unsinn, weil die mittlere Herzfrequenz dort
+  nicht zur mittleren Geschwindigkeit passt. Untaugliche Läufe fallen heraus
+  statt als Lücke zu erscheinen.
+- **Der Korrekturfaktor ist 1,0**, solange keine Labormessung vorliegt. Dann
+  ist der Verlauf aussagekräftig, der Absolutwert nicht.
+
+Angezeigt als Kachel (bester Wert der letzten 42 Läufe), als Verlauf unter
+„Bestzeiten", je Lauf in der Detailseite und als `sensor.vo2max` mit
+Langzeitstatistik.
+
 ## Strukturierte Workouts und Export
 
 Jede geplante Einheit trägt neben der Prosa auch die **intervals.icu-Workout-

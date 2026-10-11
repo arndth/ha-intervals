@@ -1,7 +1,7 @@
 {
   "domain": "ha_intervals",
   "name": "Intervals.icu Laufplan",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "documentation": "https://github.com/arndth/ha-intervals",
   "issue_tracker": "https://github.com/arndth/ha-intervals/issues",
   "codeowners": [

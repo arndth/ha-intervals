@@ -261,6 +261,71 @@ export function zonesChart(wochen, p) {
   };
 }
 
+/* ── VO2max-Verlauf ────────────────────────────────────────────────────── */
+
+export function vo2Chart(verlauf, p) {
+  if (!verlauf?.length) {
+    return leer(
+      "Keine VO2max-Werte. Dafür braucht es die maximale Herzfrequenz in den " +
+        "Optionen und gleichmäßige Läufe ab 2 km."
+    );
+  }
+
+  const W = 1000, L = 52, R = 56, T = 28, B = 34, H = 240;
+  const plotW = W - L - R, plotH = H - T - B;
+  const vals = verlauf.map((x) => x.vo2max);
+  const lo = Math.floor((Math.min(...vals) - 1) / 2) * 2;
+  const hi = Math.ceil((Math.max(...vals) + 1) / 2) * 2;
+  const y = (v) => T + plotH - ((v - lo) / (hi - lo || 1)) * plotH;
+  const x = (i) =>
+    L + (verlauf.length === 1 ? plotW / 2 : (i / (verlauf.length - 1)) * plotW);
+
+  let h = "";
+  for (let v = lo; v <= hi; v += 2) {
+    h += `<line x1="${L}" y1="${y(v)}" x2="${L + plotW}" y2="${y(v)}" stroke="${p.grid}" stroke-width="1"/>`;
+    h += `<text x="${L - 9}" y="${y(v) + 3.5}" font-family="${MONO}" font-size="10.5" text-anchor="end" fill="var(--ink-3)" style="font-variant-numeric:tabular-nums">${v}</text>`;
+  }
+  h += `<text x="${L}" y="${T - 11}" font-family="${MONO}" font-size="9.5" letter-spacing="0.8" fill="var(--ink-3)">ML/KG/MIN</text>`;
+
+  const pts = verlauf.map((r, i) => [x(i), y(r.vo2max)]);
+  h += `<path d="${path(pts)}" fill="none" stroke="${p.fitness}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+
+  // Nur Bestwert und Endpunkt werden beschriftet — eine Zahl an jedem Punkt
+  // liest niemand.
+  const besterI = vals.indexOf(Math.max(...vals));
+  pts.forEach((q, i) => {
+    const betont = i === pts.length - 1 || i === besterI;
+    h += `<circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${betont ? 4.5 : 2.6}" fill="${p.fitness}" stroke="var(--surface)" stroke-width="${betont ? 2 : 1}"/>`;
+  });
+  const last = pts[pts.length - 1];
+  h += `<text x="${last[0] + 10}" y="${last[1] + 4}" font-family="${MONO}" font-size="12" font-weight="600" fill="var(--ink)">${fmt.n(vals[vals.length - 1])}</text>`;
+  if (besterI !== vals.length - 1) {
+    h += `<text x="${pts[besterI][0]}" y="${pts[besterI][1] - 11}" font-family="${MONO}" font-size="10.5" text-anchor="middle" fill="var(--ink-3)">${fmt.n(vals[besterI])}</text>`;
+  }
+
+  const schritt = Math.max(1, Math.round(verlauf.length / 6));
+  const letzter = verlauf.length - 1;
+  verlauf.forEach((r, i) => {
+    // Der letzte Tick wird immer gesetzt; ein gestufter zu dicht davor
+    // würde mit ihm überlappen ("5. Ok11. Okt").
+    const zuNah = letzter - i < schritt * 0.75;
+    if ((i % schritt === 0 && !zuNah) || i === letzter) {
+      h += `<text x="${x(i)}" y="${H - 12}" font-family="${MONO}" font-size="10.5" text-anchor="middle" fill="var(--ink-3)">${esc(fmt.date(r.day))}</text>`;
+    }
+  });
+  h += `<line x1="${L}" y1="${T + plotH}" x2="${L + plotW}" y2="${T + plotH}" stroke="${p.baseline}" stroke-width="1"/>`;
+
+  return {
+    svg: `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="VO2max-Verlauf über ${verlauf.length} Läufe, zuletzt ${fmt.n(vals[vals.length - 1])} ml/kg/min.">${h}</svg>`,
+    minWidth: 700,
+    table: table(
+      ["Tag", "VO2max"],
+      verlauf.slice().reverse().map((r) => [fmt.day(r.day), fmt.n(r.vo2max)])
+    ),
+  };
+}
+
+
 /* ── Hilfsbausteine ────────────────────────────────────────────────────── */
 
 export function table(head, rows) {

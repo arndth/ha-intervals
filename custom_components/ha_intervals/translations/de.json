@@ -41,7 +41,9 @@
           "race_distance_km": "Distanz in km",
           "race_goal_seconds": "Zielzeit in Sekunden (0 = offen)",
           "export_webhook_url": "Webhook für den Planexport (z. B. n8n)",
-          "export_athlete_id": "Athleten-ID beim Ziel (z. B. TrainingPeaks)"
+          "export_athlete_id": "Athleten-ID beim Ziel (z. B. TrainingPeaks)",
+          "hr_max": "Maximale Herzfrequenz (für VO2max, leer = keine Schätzung)",
+          "vo2_correction": "VO2max-Korrekturfaktor (1,0 = unkalibriert)"
         },
         "description": "Wettkampf, Abrufintervall und KI-Analyse. Leeres Renndatum heißt: kein Plan und kein Countdown."
       }

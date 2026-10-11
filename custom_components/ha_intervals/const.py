@@ -29,9 +29,15 @@ CONF_ANTHROPIC_KEY: Final = "anthropic_api_key"
 CONF_MODEL: Final = "analysis_model"
 CONF_EXPORT_URL: Final = "export_webhook_url"
 CONF_EXPORT_ATHLETE: Final = "export_athlete_id"
+CONF_HR_MAX: Final = "hr_max"
+CONF_VO2_CORRECTION: Final = "vo2_correction"
 
 DEFAULT_SCAN_INTERVAL: Final = 20
 DEFAULT_MODEL: Final = "claude-opus-5"
+# Ohne eigene Labormessung bleibt der Faktor bei 1,0. Runalyze kalibriert
+# ihn persönlich; ohne Kalibrierung ist der Verlauf aussagekräftig, der
+# Absolutwert nicht.
+DEFAULT_VO2_CORRECTION: Final = 1.0
 HISTORY_DAYS: Final = 180
 
 # ── Services ─────────────────────────────────────────────────────────────

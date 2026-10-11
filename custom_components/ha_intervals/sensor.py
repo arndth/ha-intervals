@@ -41,6 +41,11 @@ DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="naechste_einheit", name="Nächste Einheit", icon="mdi:run",
     ),
+    SensorEntityDescription(
+        key="vo2max", name="VO2max", icon="mdi:lungs",
+        native_unit_of_measurement="ml/kg/min",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
 )
 
 
@@ -65,6 +70,9 @@ class IntervalsSensor(CoordinatorEntity[IntervalsCoordinator], SensorEntity):
     def native_value(self):
         key = self.entity_description.key
         data = self.coordinator.data or {}
+
+        if key == "vo2max":
+            return data.get("vo2max")
 
         if key in ("ctl", "atl", "form"):
             v = data.get(key)

@@ -18,12 +18,15 @@ from .const import (
     CONF_ATHLETE_ID,
     CONF_EXPORT_ATHLETE,
     CONF_EXPORT_URL,
+    CONF_HR_MAX,
+    CONF_VO2_CORRECTION,
     CONF_MODEL,
     CONF_RACE_DATE,
     CONF_RACE_DISTANCE,
     CONF_RACE_GOAL,
     CONF_SCAN_INTERVAL,
     DEFAULT_MODEL,
+    DEFAULT_VO2_CORRECTION,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
@@ -155,6 +158,13 @@ class IntervalsOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_RACE_GOAL, default=vorbelegt(CONF_RACE_GOAL, 0)
                 ): vol.Coerce(int),
+                vol.Optional(
+                    CONF_HR_MAX, default=vorbelegt(CONF_HR_MAX, "")
+                ): vol.Any("", vol.All(vol.Coerce(int), vol.Range(min=120, max=230))),
+                vol.Optional(
+                    CONF_VO2_CORRECTION,
+                    default=vorbelegt(CONF_VO2_CORRECTION, DEFAULT_VO2_CORRECTION),
+                ): vol.All(vol.Coerce(float), vol.Range(min=0.8, max=1.2)),
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=o.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),

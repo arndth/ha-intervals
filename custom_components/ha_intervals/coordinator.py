@@ -18,12 +18,15 @@ from .const import (
     CONF_ANTHROPIC_KEY,
     CONF_EXPORT_ATHLETE,
     CONF_EXPORT_URL,
+    CONF_HR_MAX,
+    CONF_VO2_CORRECTION,
     CONF_MODEL,
     CONF_RACE_DATE,
     CONF_RACE_DISTANCE,
     CONF_SCAN_INTERVAL,
     DEFAULT_MODEL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_VO2_CORRECTION,
     DOMAIN,
     EVENT_ANALYSIS_READY,
     EVENT_NEW_ACTIVITY,
@@ -35,6 +38,8 @@ from .planbuilder import build_plan, summary
 from .planner import Change, Session, classify, week_start
 from .util import extract_syntax, parse_date
 from .store import IntervalsStore
+from .vo2max import estimate as vo2_estimate
+from .vo2max import rolling_best, series as vo2_series
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,6 +138,22 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             "ctl": ctl,
             "atl": atl,
             "form": (ctl - atl) if ctl is not None and atl is not None else None,
+            "vo2max": (
+                rolling_best(
+                    vo2_series(
+                        [a for a in await self.store.async_query(
+                            "SELECT id, day, km, seconds, hr_avg, kind FROM activities "
+                            "WHERE day >= ? AND LOWER(REPLACE(kind,' ','')) IN "
+                            "('run','trailrun','virtualrun','treadmill')",
+                            ((today - timedelta(days=90)).isoformat(),),
+                        )],
+                        self.hr_max,
+                        self.vo2_correction,
+                    )
+                )
+                if self.hr_max
+                else None
+            ),
             "aktivitaeten": len(activities),
             "neue_aktivitaeten": neu,
             "geplant": len(self._plan),
@@ -315,6 +336,29 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
         return self.entry.options.get(key, self.entry.data.get(key, default))
 
     @property
+    def hr_max(self) -> int | None:
+        """Maximale Herzfrequenz aus den Optionen.
+
+        Wird bewusst **nicht** aus den Daten geschätzt: der höchste gemessene
+        Durchschnitt ist ein Beobachtungs-, kein Maximalwert, und jeder
+        Schlag Abweichung verschiebt die VO2max-Schätzung spürbar. Fehlt der
+        Wert, wird nichts gerechnet.
+        """
+        roh = self.cfg(CONF_HR_MAX)
+        try:
+            v = int(roh)
+        except (TypeError, ValueError):
+            return None
+        return v if 120 <= v <= 230 else None
+
+    @property
+    def vo2_correction(self) -> float:
+        try:
+            return float(self.cfg(CONF_VO2_CORRECTION, DEFAULT_VO2_CORRECTION))
+        except (TypeError, ValueError):
+            return DEFAULT_VO2_CORRECTION
+
+    @property
     def race_date(self) -> date | None:
         """Renndatum, nachsichtig gelesen.
 
@@ -355,6 +399,10 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
         laeufe = [a for a in aktivitaeten if is_run(a)]
         andere = len(aktivitaeten) - len(laeufe)
 
+        hrmax = self.hr_max
+        vo2_verlauf = vo2_series(laeufe, hrmax, self.vo2_correction) if hrmax else []
+        vo2_je_id = {x["activity_id"]: x["vo2max"] for x in vo2_verlauf}
+
         return {
             "stand": heute.isoformat(),
             "andere_sportarten": andere,
@@ -364,7 +412,16 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             else None,
             "verlauf": verlauf,
             "wochen": self._weekly(laeufe),
-            "trainings": [{k: a[k] for k in a if k != "raw"} for a in laeufe[:60]],
+            "trainings": [
+                {**{k: a[k] for k in a if k != "raw"}, "vo2max": vo2_je_id.get(a["id"])}
+                for a in laeufe[:60]
+            ],
+            "vo2max": {
+                "hr_max": hrmax,
+                "korrektur": self.vo2_correction,
+                "aktuell": rolling_best(vo2_verlauf),
+                "verlauf": vo2_verlauf,
+            },
             "bestzeiten": self._best_efforts(laeufe),
             "plan": [
                 {
@@ -723,7 +780,13 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
         zonen = roh.get("icu_hr_zone_times") or []
         return {
             "ok": True,
-            "training": {k: a[k] for k in a if k != "raw"},
+            "training": {
+                **{k: a[k] for k in a if k != "raw"},
+                "vo2max": vo2_estimate(
+                    a.get("km"), a.get("seconds"), a.get("hr_avg"),
+                    self.hr_max, self.vo2_correction,
+                ),
+            },
             "splits": splits,
             "kennzahlen": kennzahlen,
             "zonen_minuten": [int((z or 0) // 60) for z in zonen[:5]],
