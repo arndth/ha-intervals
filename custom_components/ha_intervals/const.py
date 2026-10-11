@@ -27,6 +27,8 @@ CONF_RACE_GOAL: Final = "race_goal_seconds"
 CONF_SCAN_INTERVAL: Final = "scan_interval_minutes"
 CONF_ANTHROPIC_KEY: Final = "anthropic_api_key"
 CONF_MODEL: Final = "analysis_model"
+CONF_EXPORT_URL: Final = "export_webhook_url"
+CONF_EXPORT_ATHLETE: Final = "export_athlete_id"
 
 DEFAULT_SCAN_INTERVAL: Final = 20
 DEFAULT_MODEL: Final = "claude-opus-5"
@@ -41,6 +43,7 @@ SERVICE_GET_PLAN: Final = "plan_abfragen"
 SERVICE_GET_DATA: Final = "daten_abfragen"
 SERVICE_BUILD_PLAN: Final = "plan_erstellen"
 SERVICE_DETAIL: Final = "training_details"
+SERVICE_EXPORT: Final = "plan_exportieren"
 
 # ── Events auf dem HA-Bus ────────────────────────────────────────────────
 EVENT_NEW_ACTIVITY: Final = f"{DOMAIN}_training_neu"

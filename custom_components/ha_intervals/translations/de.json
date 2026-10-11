@@ -39,7 +39,9 @@
           "analysis_model": "Modell für die Analyse",
           "race_date": "Renndatum",
           "race_distance_km": "Distanz in km",
-          "race_goal_seconds": "Zielzeit in Sekunden (0 = offen)"
+          "race_goal_seconds": "Zielzeit in Sekunden (0 = offen)",
+          "export_webhook_url": "Webhook für den Planexport (z. B. n8n)",
+          "export_athlete_id": "Athleten-ID beim Ziel (z. B. TrainingPeaks)"
         },
         "description": "Wettkampf, Abrufintervall und KI-Analyse. Leeres Renndatum heißt: kein Plan und kein Countdown."
       }

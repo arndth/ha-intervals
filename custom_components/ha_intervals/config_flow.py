@@ -16,6 +16,8 @@ from .const import (
     CONF_ANTHROPIC_KEY,
     CONF_API_KEY,
     CONF_ATHLETE_ID,
+    CONF_EXPORT_ATHLETE,
+    CONF_EXPORT_URL,
     CONF_MODEL,
     CONF_RACE_DATE,
     CONF_RACE_DISTANCE,
@@ -162,6 +164,12 @@ class IntervalsOptionsFlow(OptionsFlow):
                 ): str,
                 vol.Optional(
                     CONF_MODEL, default=o.get(CONF_MODEL, DEFAULT_MODEL)
+                ): str,
+                vol.Optional(
+                    CONF_EXPORT_URL, default=o.get(CONF_EXPORT_URL, "")
+                ): str,
+                vol.Optional(
+                    CONF_EXPORT_ATHLETE, default=o.get(CONF_EXPORT_ATHLETE, "")
                 ): str,
             }
         )

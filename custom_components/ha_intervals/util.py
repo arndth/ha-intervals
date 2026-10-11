@@ -43,3 +43,26 @@ def to_iso(value: object) -> str | None:
     """Beliebige Schreibweise → `JJJJ-MM-TT`, oder None."""
     d = parse_date(value)
     return d.isoformat() if d else None
+
+
+def extract_syntax(description: str) -> str:
+    """Workout-Schreibweise aus einer Beschreibung herauslösen.
+
+    Geparst werden von intervals.icu wie vom n8n-Konverter nur Zeilen, die
+    mit "-" beginnen, sowie Wiederholungsköpfe wie "5x". Alles andere —
+    Prosa, Markierung — ist für beide unsichtbar. Dieselbe Regel gilt hier
+    beim Zurücklesen.
+    """
+    import re as _re
+
+    out: list[str] = []
+    for zeile in (description or "").splitlines():
+        z = zeile.strip()
+        if z.startswith("-") or _re.fullmatch(r"\d+x", z, _re.I):
+            out.append(z)
+        elif not z and out:
+            out.append("")          # Leerzeile trennt Wiederholungsblöcke
+    # führende und doppelte Leerzeilen am Ende entfernen
+    while out and not out[-1]:
+        out.pop()
+    return "\n".join(out)

@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import json
 import logging
+
+import aiohttp
 from datetime import date, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import IntervalsAuthError, IntervalsClient, IntervalsConnectionError
 from .const import (
     CONF_ANTHROPIC_KEY,
+    CONF_EXPORT_ATHLETE,
+    CONF_EXPORT_URL,
     CONF_MODEL,
     CONF_RACE_DATE,
     CONF_RACE_DISTANCE,
@@ -28,7 +33,7 @@ from .const import (
 )
 from .planbuilder import build_plan, summary
 from .planner import Change, Session, classify, week_start
-from .util import parse_date
+from .util import extract_syntax, parse_date
 from .store import IntervalsStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -188,12 +193,13 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             load,
             km,
             desc,
+            extract_syntax(desc),
             json.dumps(e, ensure_ascii=False),
         )
 
     async def _load_plan(self) -> list[Session]:
         rows = await self.store.async_query(
-            "SELECT id, day, kind, name, load, km, description "
+            "SELECT id, day, kind, name, load, km, description, syntax "
             "FROM plan_events ORDER BY day"
         )
         return [
@@ -205,6 +211,7 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
                 load=int(r["load"] or 0),
                 km=float(r["km"] or 0.0),
                 description=r["description"] or "",
+                syntax=r["syntax"] or "",
             )
             for r in rows
             if r["day"]
@@ -368,6 +375,7 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
                     "last": s.load,
                     "km": s.km,
                     "beschreibung": s.description,
+                    "syntax": s.syntax,
                 }
                 for s in self._plan
             ],
@@ -590,6 +598,7 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
                     "km": s.km,
                     "last": s.load,
                     "beschreibung": s.description,
+                    "syntax": s.syntax,
                 }
                 for s in plan
             ],
@@ -630,8 +639,15 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
                 "category": "WORKOUT",
                 "type": "Run",
                 "name": s.name,
+                # Reihenfolge ist Absicht: zuerst die Workout-Schreibweise,
+                # damit intervals.icu daraus einen strukturierten Workout baut
+                # (die Uhr zählt die Intervalle dann selbst herunter), danach
+                # die Prosa für Menschen und zuletzt die Markierung. Beide
+                # Parser lesen nur Zeilen mit "-" bzw. "5x" und übergehen den
+                # Rest.
                 "description": (
-                    f"{s.description}\n\n{PLAN_MARKER} art={s.kind} km={s.km:g} "
+                    f"{s.syntax}\n\n{s.description}\n\n"
+                    f"{PLAN_MARKER} art={s.kind} km={s.km:g} "
                     f"woche={s.week} phase={s.phase.replace(' ', '_')}"
                 ),
                 "moving_time": int(s.km * race_pace_s * 1.15),
@@ -723,4 +739,79 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
                 else None
             ),
             "hinweis": hinweis,
+        }
+
+    # ── Export an einen Webhook ──────────────────────────────────────────
+
+    async def async_export_plan(
+        self, von: date, bis: date, dry_run: bool = True
+    ) -> dict:
+        """Geplante Einheiten an einen Webhook schicken.
+
+        Bewusst allgemein gehalten: die Integration kennt weder n8n noch
+        TrainingPeaks. Sie schickt je Einheit ein flaches Objekt mit den
+        Feldnamen, die der vorhandene n8n-Sub-Workflow erwartet. Wer etwas
+        anderes dahinter hängt, ändert den Webhook, nicht die Integration.
+        """
+        url = self.cfg(CONF_EXPORT_URL)
+        athlet = self.cfg(CONF_EXPORT_ATHLETE)
+        if not dry_run and not url:
+            return {
+                "ok": False,
+                "grund": "Keine Webhook-Adresse hinterlegt (Integration → Konfigurieren).",
+            }
+
+        einheiten = [
+            s for s in self._plan if von <= s.day <= bis and s.syntax
+        ]
+        nutzlast = [
+            {
+                "athleteid": athlet,
+                "title": s.name,
+                "description": s.syntax,
+                "workoutday": s.day.isoformat(),
+            }
+            for s in einheiten
+        ]
+        ohne_syntax = len(
+            [s for s in self._plan if von <= s.day <= bis and not s.syntax]
+        )
+
+        if dry_run:
+            return {
+                "ok": True,
+                "trocken": True,
+                "ziel": url,
+                "einheiten": len(nutzlast),
+                "ohne_syntax": ohne_syntax,
+                "nutzlast": nutzlast,
+            }
+
+        session = async_get_clientsession(self.hass)
+        gesendet, fehler = 0, []
+        for n in nutzlast:
+            try:
+                async with session.post(
+                    url, json=n, timeout=aiohttp.ClientTimeout(total=30)
+                ) as resp:
+                    if resp.status >= 400:
+                        fehler.append(
+                            {"tag": n["workoutday"], "status": resp.status,
+                             "text": (await resp.text())[:200]}
+                        )
+                    else:
+                        gesendet += 1
+            except (aiohttp.ClientError, TimeoutError) as err:
+                fehler.append({"tag": n["workoutday"], "fehler": str(err)})
+
+        await self.store.async_log_plan(
+            "-", "exportiert", f"{gesendet} an {url}, {len(fehler)} Fehler"
+        )
+        return {
+            "ok": not fehler,
+            "trocken": False,
+            "ziel": url,
+            "gesendet": gesendet,
+            "ohne_syntax": ohne_syntax,
+            "fehler": fehler,
         }

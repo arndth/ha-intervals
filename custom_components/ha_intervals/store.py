@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS plan_events (
     load        INTEGER,
     km          REAL,
     description TEXT,
+    syntax      TEXT,
     raw         TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_plan_day ON plan_events(day);
@@ -118,6 +119,14 @@ class IntervalsStore:
         self._conn = sqlite3.connect(self._path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
+        # Bestehende Ablagen nachziehen. SQLite kennt kein "ADD COLUMN IF NOT
+        # EXISTS"; ein zweiter Lauf wirft OperationalError, und das ist hier
+        # der Normalfall, kein Fehler.
+        for tabelle, spalte, typ in (("plan_events", "syntax", "TEXT"),):
+            try:
+                self._conn.execute(f"ALTER TABLE {tabelle} ADD COLUMN {spalte} {typ}")
+            except sqlite3.OperationalError:
+                pass
         self._conn.commit()
 
     async def async_close(self) -> None:
@@ -207,8 +216,8 @@ class IntervalsStore:
         cur.execute("DELETE FROM plan_events")
         cur.executemany(
             """INSERT INTO plan_events
-               (id, day, kind, name, load, km, description, raw)
-               VALUES (?,?,?,?,?,?,?,?)""",
+               (id, day, kind, name, load, km, description, syntax, raw)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             rows,
         )
         self._conn.commit()

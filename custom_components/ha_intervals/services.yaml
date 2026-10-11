@@ -124,3 +124,24 @@ training_details:
       selector: { text: }
     entry_id:
       selector: { text: }
+
+plan_exportieren:
+  name: Plan an Webhook schicken
+  description: >-
+    Schickt geplante Einheiten als flaches JSON an die in den Optionen
+    hinterlegte Webhook-Adresse — je Einheit ein Aufruf mit athleteid, title,
+    description (Workout-Schreibweise) und workoutday. Passt damit auf den
+    n8n-Sub-Workflow „Send to TrainingPeaks".
+  fields:
+    von:
+      description: Ab wann (heute, morgen oder JJJJ-MM-TT). Vorgabe heute.
+      selector: { text: }
+    bis:
+      description: Bis wann. Vorgabe in 14 Tagen.
+      selector: { text: }
+    trocken:
+      default: true
+      description: Nur anzeigen, was gesendet würde.
+      selector: { boolean: }
+    entry_id:
+      selector: { text: }

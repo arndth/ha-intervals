@@ -54,6 +54,7 @@ from .const import (
     SERVICE_ANALYSE,
     SERVICE_BUILD_PLAN,
     SERVICE_DETAIL,
+    SERVICE_EXPORT,
     SERVICE_GET_DATA,
     SERVICE_GET_PLAN,
     SERVICE_MOVE,
@@ -85,6 +86,15 @@ REPLAN_SCHEMA = vol.Schema(
     {
         vol.Optional("ab_datum"): cv.string,
         vol.Optional("grund", default=""): cv.string,
+        vol.Optional("entry_id"): cv.string,
+    }
+)
+
+EXPORT_SCHEMA = vol.Schema(
+    {
+        vol.Optional("von"): cv.string,
+        vol.Optional("bis"): cv.string,
+        vol.Optional("trocken", default=True): cv.boolean,
         vol.Optional("entry_id"): cv.string,
     }
 )
@@ -215,6 +225,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_GET_PLAN,
                 SERVICE_BUILD_PLAN,
     SERVICE_DETAIL,
+    SERVICE_EXPORT,
     SERVICE_GET_DATA,
             ):
                 hass.services.async_remove(DOMAIN, svc)
@@ -455,6 +466,17 @@ def _async_register_services(hass: HomeAssistant) -> None:
             })
         return result
 
+    async def _export(call: ServiceCall) -> ServiceResponse:
+        c = _coordinator(hass, call)
+        heute = date.today()
+        von = _parse_target(call.data["von"]) if call.data.get("von") else heute
+        bis = (
+            _parse_target(call.data["bis"])
+            if call.data.get("bis")
+            else heute + timedelta(days=14)
+        )
+        return await c.async_export_plan(von, bis, call.data.get("trocken", True))
+
     async def _detail(call: ServiceCall) -> ServiceResponse:
         c = _coordinator(hass, call)
         return await c.async_activity_detail(str(call.data["activity_id"]))
@@ -462,6 +484,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
     for name, handler, schema in (
         (SERVICE_SYNC, _sync, SIMPLE_SCHEMA),
         (SERVICE_DETAIL, _detail, DETAIL_SCHEMA),
+        (SERVICE_EXPORT, _export, EXPORT_SCHEMA),
         (SERVICE_BUILD_PLAN, _build_plan, BUILD_PLAN_SCHEMA),
         (SERVICE_GET_DATA, _get_data, DATA_SCHEMA),
         (SERVICE_MOVE, _move, MOVE_SCHEMA),

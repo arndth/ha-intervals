@@ -39,6 +39,7 @@ class PlannedSession:
     description: str
     week: int
     phase: str
+    syntax: str = ""          # intervals.icu-Workout-Schreibweise
 
 
 # ── Wochenvorlage ────────────────────────────────────────────────────────
@@ -117,6 +118,58 @@ def _describe(key: str, km: float, rp: int, easy: int | None = None) -> str:
         "rennen": f"Wettkampf {km:g} km. Zieltempo {_mmss(rt)}/km. Erste 3 km bewusst zurückhalten.",
     }
     return texte[key]
+
+
+# ── intervals.icu-Workout-Schreibweise ──────────────────────────────────
+#
+# Daraus macht intervals.icu einen *strukturierten* Workout statt nur eines
+# Textes — die Uhr zählt die Intervalle dann selbst herunter. Dieselbe
+# Schreibweise versteht der n8n-Konverter, der nach TrainingPeaks schiebt.
+#
+# Drei Fallen, alle aus dem Parser gelesen und nicht geraten:
+#   · `m` heißt **Minuten**, nicht Meter. 400 m Trabpause ist `0.4km`.
+#   · Eine Leerzeile beendet einen Wiederholungsblock. Ohne sie saugt er
+#     das Auslaufen mit hinein.
+#   · Der *erste* Schritt legt den Zieltyp für den ganzen Workout fest —
+#     deshalb trägt jede erste Zeile „Pace".
+
+Z_RECOVERY, Z_EASY, Z_THRESHOLD, Z_VO2 = "Z1", "Z2", "Z4", "Z5"
+
+
+def _rep(reps: int, arbeit: str, pause: str) -> str:
+    return f"{reps}x\n- {arbeit}\n- {pause}"
+
+
+def _syntax(key: str, km: float) -> str:
+    """Workout-Schreibweise zu einem Beschreibungsschlüssel."""
+    ein = f"- 2km {Z_EASY} Pace"
+    aus = f"- 1.5km {Z_EASY} Pace"
+
+    if key in ("locker", "longrun"):
+        return f"- {km:g}km {Z_EASY} Pace"
+    if key == "longrun_rt":
+        return f"- {max(km - 4, 1):g}km {Z_EASY} Pace\n\n- 4km {Z_THRESHOLD} Pace"
+    if key == "steig":
+        return (
+            f"- {max(km - 1.5, 1):g}km {Z_EASY} Pace\n\n"
+            + _rep(6, f"20s {Z_VO2} Pace", f"60s {Z_RECOVERY} Pace")
+        )
+    if key == "rennen":
+        return f"- {km:g}km {Z_THRESHOLD} Pace"
+
+    blocks = {
+        "tempo3x5": _rep(3, f"5m {Z_THRESHOLD} Pace", f"2m {Z_RECOVERY} Pace"),
+        "tempo4x5": _rep(4, f"5m {Z_THRESHOLD} Pace", f"2m {Z_RECOVERY} Pace"),
+        "tempo2x6": _rep(2, f"6m {Z_THRESHOLD} Pace", f"3m {Z_RECOVERY} Pace"),
+        "schwelle2x15": _rep(2, f"15m {Z_THRESHOLD} Pace", f"3m {Z_RECOVERY} Pace"),
+        "int5x1000": _rep(5, f"1km {Z_VO2} Pace", f"0.4km {Z_RECOVERY} Pace"),
+        "int6x1000": _rep(6, f"1km {Z_VO2} Pace", f"0.4km {Z_RECOVERY} Pace"),
+        "rt3x2000": _rep(3, f"2km {Z_THRESHOLD} Pace", f"3m {Z_RECOVERY} Pace"),
+        "rt2x2000": _rep(2, f"2km {Z_THRESHOLD} Pace", f"3m {Z_RECOVERY} Pace"),
+    }
+    if key in blocks:
+        return f"{ein}\n\n{blocks[key]}\n\n{aus}"
+    return f"- {km:g}km {Z_EASY} Pace"
 
 
 def _kind_for(name: str) -> str:
@@ -216,6 +269,7 @@ def build_plan(
                     km=float(km),
                     load=round(km * LOAD_FACTOR[kind]),
                     description=_describe(key, km, bezug, easy_pace_s),
+                    syntax=_syntax(key, km),
                     week=w + 1,
                     phase=phase,
                 )

@@ -57,6 +57,7 @@ curl -X POST "http://192.168.1.69:8123/api/services/ha_intervals/verschieben?ret
 | `ha_intervals.analysieren` | einen Lauf bewerten lassen |
 | `ha_intervals.plan_erstellen` | 13-Wochen-Plan rechnen und schreiben (Trockenlauf ist Vorgabe) |
 | `ha_intervals.training_details` | Eckdaten, Splits, Zonen und Analyse eines Laufs |
+| `ha_intervals.plan_exportieren` | geplante Einheiten an einen Webhook schicken |
 | `ha_intervals.umplanen` | Restwoche neu planen *(noch nicht fertig)* |
 
 Antwort von `verschieben` bei einer Ablehnung — die `alternativen` sind
@@ -105,6 +106,40 @@ Agent austauschen heißt damit: Automation ändern. Die Integration bleibt
 unberührt.
 
 ---
+
+## Strukturierte Workouts und Export
+
+Jede geplante Einheit trägt neben der Prosa auch die **intervals.icu-Workout-
+Schreibweise**:
+
+```
+- 2km Z2 Pace
+
+5x
+- 1km Z5 Pace
+- 0.4km Z1 Pace
+
+- 1.5km Z2 Pace
+```
+
+intervals.icu baut daraus einen strukturierten Workout — die Uhr zählt die
+Intervalle dann selbst herunter, statt nur einen Text anzuzeigen. Beide
+Parser (intervals.icu wie der n8n-Konverter) lesen ausschließlich Zeilen mit
+`-` oder `5x` und übergehen Prosa und Markierung.
+
+Drei Eigenheiten der Schreibweise, aus dem Parser gelesen und nicht geraten:
+
+- **`m` heißt Minuten, nicht Meter.** 400 m Trabpause ist `0.4km`.
+- Eine **Leerzeile beendet** einen Wiederholungsblock. Ohne sie wird das
+  Auslaufen mit hineingezogen.
+- Der **erste Schritt legt den Zieltyp fest** — deshalb trägt jede erste
+  Zeile `Pace`.
+
+`plan_exportieren` schickt die Einheiten an eine in den Optionen hinterlegte
+Webhook-Adresse, je Einheit ein Aufruf mit `athleteid`, `title`,
+`description` (die Schreibweise) und `workoutday`. Das passt auf den
+n8n-Sub-Workflow „Send to TrainingPeaks"; die Integration selbst kennt weder
+n8n noch TrainingPeaks.
 
 ## Das Regelwerk
 
@@ -177,6 +212,8 @@ eigenen langlebigen Token.
 | Services und Events | fertig |
 | Panel: Form, Trainingsplan, Bestzeiten, Trainings | fertig, hell und dunkel geprüft |
 | Detailseite je Training mit Kilometer-Splits | fertig |
+| Strukturierte Workouts (intervals.icu-Schreibweise) | fertig, gegen den n8n-Konverter geprüft |
+| Export an einen Webhook | fertig |
 | Plangenerator mit Tempoprogression | fertig, 16 Tests |
 | Verschieben aus dem Panel samt Konfliktanzeige | fertig |
 | KI-Einzelanalyse | fertig, ungetestet gegen die echte API |
