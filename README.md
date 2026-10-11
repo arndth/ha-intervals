@@ -199,6 +199,18 @@ cd .. && python3 -m http.server 8777
 #   ?view=plan&move=1001&try=tauschen        Konfliktdialog
 ```
 
+### Gestaltung
+
+Chrome (Flächen, Text, Linien, Akzent) kommt aus Home Assistants
+Theme-Variablen — das Panel soll aussehen wie der Rest der Installation.
+Die Serienfarben nicht: die sind fest und gegen Kontrast, Lightness-Band
+und Farbsinnstörungen geprüft. Welche Variante gilt, wird an der Helligkeit
+der Kartenfläche **gemessen**, nicht an `prefers-color-scheme` geraten.
+
+Keine Schrift wird nachgeladen. Ein Panel, das eine Google-Schrift zieht,
+bricht hinter einer Firewall und verrät nebenbei, wer gerade auf sein
+Dashboard schaut.
+
 Das Panel ist ein Custom Element, kein iframe: nur so bekommt es das
 `hass`-Objekt und erbt die Anmeldung des Nutzers. Ein iframe bräuchte einen
 eigenen langlebigen Token.

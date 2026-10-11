@@ -81,6 +81,12 @@ export function palette(mode) {
 }
 
 /** Chrome über HA-Variablen, mit eigenen Werten als Rückfall. */
+/** Phasenfarben — aus der geprüften Zonenrampe, nicht frei gewählt. */
+export function phaseColor(phase, p) {
+  const i = { Wiederaufbau: 0, Entwicklung: 2, "Schärfung": 3, Taper: 4 };
+  return p.zones[i[phase] ?? 1];
+}
+
 export const CSS_TOKENS = `
   --ink:        var(--primary-text-color, #10161a);
   --ink-2:      var(--secondary-text-color, #4a565e);
@@ -89,7 +95,10 @@ export const CSS_TOKENS = `
   --plane:      var(--primary-background-color, #eef1f3);
   --rule:       var(--divider-color, rgba(16,22,26,0.10));
   --accent:     var(--primary-color, #2a78d6);
-  --radius:     var(--ha-card-border-radius, 10px);
+  --radius:     var(--ha-card-border-radius, 14px);
+  --radius-sm:  8px;
+  --gap:        16px;
+  --pad:        20px;
   --sans:       var(--paper-font-body1_-_font-family, system-ui, -apple-system, sans-serif);
   --mono:       ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 `;

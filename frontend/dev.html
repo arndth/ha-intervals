@@ -91,9 +91,19 @@ const PLAN = [
   ["Longrun", "16 km, letzte 4 km @ 5:15", 104, "longrun", 16],
 ];
 
-const plan = PLAN.map(([name, beschreibung, last, art, km], i) => ({
-  event_id: String(1000 + i), tag: iso(plus(i + 1)), art, name, last, km, beschreibung,
-}));
+const PHASEN = ["Wiederaufbau","Wiederaufbau","Entwicklung","Schärfung"];
+const plan = [];
+for (let w = 0; w < 4; w++) {
+  PLAN.forEach(([name, beschreibung, last, art, km], i) => {
+    const tag = iso(plus(w * 7 + i + 1));
+    plan.push({
+      event_id: String(1000 + w * 7 + i), tag, art, name, last, km,
+      beschreibung: beschreibung
+        + "\n\n[HA-LAUFPLAN] art=" + art + " km=" + km
+        + " woche=" + (w + 1) + " phase=" + PHASEN[w],
+    });
+  });
+}
 
 const trainings = verlauf
   .filter((v, i) => i % 2 === 0)

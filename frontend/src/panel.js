@@ -10,7 +10,7 @@
  * bevorzugte Schnittstelle fürs Frontend gibt es bewusst nicht.
  */
 
-import { CSS_TOKENS, detectMode, palette } from "./theme.js";
+import { CSS_TOKENS, detectMode, palette, phaseColor } from "./theme.js";
 import {
   esc,
   fmt,
@@ -167,13 +167,16 @@ class HaIntervalsPanel extends HTMLElement {
     if (this._error) {
       body = `<div class="card err"><b>Daten konnten nicht geladen werden.</b><br>${esc(this._error)}</div>`;
     } else if (!d) {
-      body = `<div class="card"><p class="hint">${this._busy ? "Lade …" : "Keine Daten."}</p></div>`;
+      body = this._busy
+        ? this._skeleton(4)
+        : `<div class="card empty"><b>Noch keine Daten</b>
+             <p class="hint">Einmal „Abrufen" drücken — danach stehen Form, Plan und Trainings hier.</p></div>`;
     } else {
       body =
         this._view === "form"
           ? this._viewForm(d, p)
           : this._view === "plan"
-          ? this._viewPlan(d)
+          ? this._viewPlan(d, p)
           : this._view === "best"
           ? this._viewBest(d)
           : this._viewRuns(d);
@@ -181,16 +184,18 @@ class HaIntervalsPanel extends HTMLElement {
 
     this.shadowRoot.innerHTML = `<style>${this._css()}</style>
       <header>
-        <div>
+        <div class="brand">
           <div class="eyebrow">intervals.icu${d?.stand ? " · Stand " + esc(fmt.day(d.stand)) : ""}</div>
           <h1>Laufen</h1>
+          ${d?.renntag ? `<div class="sub">Wettkampf am ${esc(fmt.day(d.renntag))}</div>` : ""}
         </div>
         ${
           d?.tage_bis_rennen != null
-            ? `<div class="cd"><span class="n">${d.tage_bis_rennen}</span><span class="u">Tage bis zum Rennen</span></div>`
+            ? `<div class="cd"><span class="n">${d.tage_bis_rennen}</span><span class="u">Tage</span></div>`
             : ""
         }
       </header>
+      ${this._progress(d, p)}
       <nav>${tabs}<span class="spacer"></span>
         <button class="ghost" data-act="sync" ${this._busy ? "disabled" : ""}>${this._busy ? "…" : "Abrufen"}</button>
       </nav>
@@ -200,6 +205,34 @@ class HaIntervalsPanel extends HTMLElement {
       ${this._detail ? this._detailSheet(p) : ""}`;
 
     this._wire();
+  }
+
+  /** Schmales Band: wie weit ist der Plan? Eine Zahl allein beantwortet
+   *  "noch 91 Tage" — das Band beantwortet "wo im Aufbau stehe ich". */
+  _progress(d, p) {
+    const plan = d?.plan || [];
+    if (!plan.length || d?.tage_bis_rennen == null) return "";
+    const heute = new Date().toISOString().slice(0, 10);
+    const erledigt = plan.filter((s) => s.tag < heute).length;
+    const pct = Math.round((erledigt / plan.length) * 100);
+    const aktuell = plan.find((s) => s.tag >= heute);
+    return `<div class="progress">
+      <div class="track"><span style="width:${pct}%;background:${p.fitness}"></span></div>
+      <div class="meta">
+        <span>${erledigt} von ${plan.length} Einheiten</span>
+        ${aktuell ? `<span>Als Nächstes: ${esc(aktuell.name)} am ${esc(fmt.day(aktuell.tag))}</span>` : ""}
+      </div>
+    </div>`;
+  }
+
+  _skeleton(n = 3) {
+    return `<div class="card">${Array.from({ length: n })
+      .map((_, i) => `<div class="sk" style="width:${[70, 92, 55][i % 3]}%"></div>`)
+      .join("")}</div>`;
+  }
+
+  _badge(text, color) {
+    return `<span class="badge" style="--c:${color}">${esc(text)}</span>`;
   }
 
   _wire() {
@@ -280,10 +313,20 @@ class HaIntervalsPanel extends HTMLElement {
       </section>
 
       <div class="tiles">
-        ${this._tile("Fitness · CTL", fmt.n(letzte.ctl), "")}
-        ${this._tile("Ermüdung · ATL", fmt.n(letzte.atl), "")}
-        ${this._tile("Diese Woche", woche ? fmt.n(woche.km) : "—", woche?.soll_km ? `/ ${fmt.n(woche.soll_km, 0)} km` : "km")}
-        ${this._tile("Geplante Einheiten", String((d.plan || []).length), "")}
+        ${this._tile("Fitness · CTL", fmt.n(letzte.ctl), "", "42-Tage-Mittel", p.fitness)}
+        ${this._tile("Ermüdung · ATL", fmt.n(letzte.atl), "", "7-Tage-Mittel", p.fatigue)}
+        ${this._tile(
+          "Diese Woche",
+          woche ? fmt.n(woche.km) : "—",
+          woche?.soll_km ? `/ ${fmt.n(woche.soll_km, 0)} km` : "km",
+          woche?.soll_km ? `${Math.round((woche.km / woche.soll_km) * 100)} % vom Soll` : null
+        )}
+        ${this._tile(
+          "Geplant",
+          String((d.plan || []).length),
+          "Einheiten",
+          d.tage_bis_rennen != null ? `bis zum ${fmt.day(d.renntag)}` : null
+        )}
       </div>
 
       ${this._chartCard("last", "Trainingslast und Form", "Fitness ist der 42-Tage-, Ermüdung der 7-Tage-Mittelwert der Tageslast.", load, [
@@ -309,34 +352,70 @@ class HaIntervalsPanel extends HTMLElement {
 
   /* ── Ansicht: Trainingsplan ──────────────────────────────────────────── */
 
-  _viewPlan(d) {
+  _viewPlan(d, p) {
     const heute = new Date().toISOString().slice(0, 10);
-    const kommend = (d.plan || []).filter((s) => s.tag >= heute).slice(0, 21);
+    const kommend = (d.plan || []).filter((s) => s.tag >= heute).slice(0, 24);
     if (!kommend.length) {
-      return `<section class="card"><p class="hint">Keine geplanten Einheiten in intervals.icu.</p></section>`;
+      return `<section class="card empty"><b>Kein Plan hinterlegt</b>
+        <p class="hint">Mit <code>ha_intervals.plan_erstellen</code> einen Plan rechnen
+        und nach intervals.icu schreiben.</p></section>`;
     }
 
-    const rows = kommend
-      .map(
-        (s) => `
-      <div class="planrow ${s.art === "ruhe" ? "rest" : ""}">
-        <span class="day">${esc(fmt.day(s.tag))}</span>
-        <span class="what">
-          <span class="kind">${esc(s.name || ART[s.art] || s.art)}</span>
-          ${s.beschreibung ? `<span class="detail">${esc(s.beschreibung)}</span>` : ""}
-        </span>
-        <span class="load">${s.last || "—"}</span>
-        <button class="ghost sm" data-move="${esc(s.event_id)}">Verschieben</button>
-      </div>`
-      )
-      .join("");
+    // Nach Kalenderwoche gruppieren: eine Liste von 24 Zeilen liest sich
+    // nicht, eine Woche als Block schon.
+    const wochen = new Map();
+    for (const s of kommend) {
+      const d0 = new Date(s.tag);
+      const mo = new Date(d0);
+      mo.setDate(d0.getDate() - ((d0.getDay() + 6) % 7));
+      const k = mo.toISOString().slice(0, 10);
+      if (!wochen.has(k)) wochen.set(k, []);
+      wochen.get(k).push(s);
+    }
 
-    return `<section class="card">
-      <div class="head"><h2>Kommende Einheiten</h2>
-        <span class="eyebrow">${kommend.length} Einträge</span></div>
-      <p class="hint">Änderungen gehen nach intervals.icu und von dort auf die Uhr.</p>
-      <div class="plan">${rows}</div>
-    </section>`;
+    const bloecke = [...wochen.entries()].map(([start, ss]) => {
+      const km = ss.reduce((a, x) => a + (x.km || 0), 0);
+      const phase = this._phaseOf(ss[0]);
+      const rows = ss.map((s) => `
+        <div class="planrow ${s.art === "ruhe" ? "rest" : ""}">
+          <span class="day">${esc(fmt.day(s.tag))}</span>
+          <span class="dot" style="background:${this._artColor(s.art, p)}"></span>
+          <span class="what">
+            <span class="kind">${esc(s.name || ART[s.art] || s.art)}</span>
+            ${s.beschreibung ? `<span class="detail">${esc((s.beschreibung || "").split("\n")[0])}</span>` : ""}
+          </span>
+          <span class="load">${s.last || "—"}</span>
+          ${s.art === "ruhe"
+            ? `<span class="spacerbtn"></span>`
+            : `<button class="ghost sm" data-move="${esc(s.event_id)}">Verschieben</button>`}
+        </div>`).join("");
+      return `<section class="card">
+        <div class="head">
+          <h2>Woche ab ${esc(fmt.date(start))}</h2>
+          <span class="right">
+            ${phase ? this._badge(phase, phaseColor(phase, p)) : ""}
+            <span class="eyebrow">${fmt.n(km, 1)} km</span>
+          </span>
+        </div>
+        <div class="plan">${rows}</div>
+      </section>`;
+    });
+
+    return `<p class="hint lead">Änderungen gehen nach intervals.icu und von dort auf die Uhr.</p>`
+      + bloecke.join("");
+  }
+
+  /** Phase steht in der Markierung der Beschreibung. */
+  _phaseOf(s) {
+    const m = /phase=([^\s]+)/.exec(s.beschreibung || "");
+    return m ? m[1].replace(/_/g, " ") : null;
+  }
+
+  _artColor(art, p) {
+    return art === "qualitaet" ? p.fatigue
+      : art === "longrun" ? p.fitness
+      : art === "ruhe" ? p.grid
+      : p.zones[1];
   }
 
   _moveDialog() {
@@ -356,7 +435,7 @@ class HaIntervalsPanel extends HTMLElement {
       </div>`;
 
     if (r && !r.ok) {
-      out += `<div class="note">
+      out += `<div class="callout">
         <b>Geht so nicht.</b>
         <ul>${(r.konflikte || []).map((k) => `<li>${esc(k.text)}</li>`).join("")}</ul>
         ${
@@ -370,7 +449,7 @@ class HaIntervalsPanel extends HTMLElement {
       </div>`;
     }
     if (r && r.ok && r.hinweise?.length) {
-      out += `<div class="note"><b>Übernommen.</b><ul>${r.hinweise
+      out += `<div class="callout"><b>Übernommen.</b><ul>${r.hinweise
         .map((h) => `<li>${esc(h)}</li>`)
         .join("")}</ul></div>`;
     }
@@ -505,9 +584,15 @@ class HaIntervalsPanel extends HTMLElement {
 
   /* ── Bausteine ───────────────────────────────────────────────────────── */
 
-  _tile(label, value, unit) {
-    return `<div class="tile"><span class="eyebrow">${esc(label)}</span>
-      <div class="row base"><span class="v">${esc(value)}</span>${unit ? `<span class="unit">${esc(unit)}</span>` : ""}</div></div>`;
+  _tile(label, value, unit, note, color) {
+    return `<div class="tile">
+      <span class="eyebrow">${esc(label)}</span>
+      <div class="row base">
+        <span class="v"${color ? ` style="color:${color}"` : ""}>${esc(value)}</span>
+        ${unit ? `<span class="unit">${esc(unit)}</span>` : ""}
+      </div>
+      ${note ? `<span class="note">${esc(note)}</span>` : ""}
+    </div>`;
   }
 
   _chartCard(key, title, sub, chart, legend) {
@@ -538,115 +623,185 @@ class HaIntervalsPanel extends HTMLElement {
   _css() {
     return `
     :host { ${CSS_TOKENS}
-      display:block; padding:16px 20px 56px; font-family:var(--sans);
-      color:var(--ink); background:var(--plane); min-height:100%; font-size:15px; }
+      display:block; padding:20px 22px 64px; font-family:var(--sans);
+      color:var(--ink); background:var(--plane); min-height:100%; font-size:15px;
+      line-height:1.5; }
     * { box-sizing:border-box; }
-    h1 { margin:2px 0 0; font-size:26px; font-weight:650; letter-spacing:-0.02em; }
-    h2 { margin:0; font-size:15px; font-weight:600; }
+
+    /* ── Kopf ── */
     header { display:flex; justify-content:space-between; align-items:flex-end;
-      gap:20px; flex-wrap:wrap; padding-bottom:12px; }
-    .cd { text-align:right; }
-    .cd .n { font-family:var(--mono); font-size:30px; font-weight:600; display:block;
-      line-height:1; letter-spacing:-0.02em; }
-    .cd .u, .eyebrow { font-family:var(--mono); font-size:10.5px; letter-spacing:0.12em;
+      gap:20px; flex-wrap:wrap; padding-bottom:14px; }
+    h1 { margin:3px 0 0; font-size:28px; font-weight:680; letter-spacing:-0.025em; }
+    .brand .sub { color:var(--ink-2); font-size:13.5px; margin-top:3px; }
+    .eyebrow, .cd .u { font-family:var(--mono); font-size:10.5px; letter-spacing:0.13em;
       text-transform:uppercase; color:var(--ink-3); }
-    nav { display:flex; gap:4px; align-items:center; border-bottom:1px solid var(--rule);
-      margin-bottom:16px; flex-wrap:wrap; }
+    .cd { text-align:right; }
+    .cd .n { font-size:38px; font-weight:680; display:block; line-height:1;
+      letter-spacing:-0.035em; color:var(--accent); }
+
+    /* ── Fortschrittsband ── */
+    .progress { margin:2px 0 18px; }
+    .progress .track { height:5px; border-radius:3px; background:var(--rule);
+      overflow:hidden; }
+    .progress .track span { display:block; height:100%; border-radius:3px; }
+    .progress .meta { display:flex; justify-content:space-between; gap:12px;
+      flex-wrap:wrap; margin-top:7px; font-family:var(--mono); font-size:11px;
+      color:var(--ink-3); }
+
+    /* ── Navigation ── */
+    nav { display:flex; gap:2px; align-items:center; border-bottom:1px solid var(--rule);
+      margin-bottom:18px; flex-wrap:wrap; }
     nav .spacer { flex:1; }
     button { font:inherit; cursor:pointer; }
-    .tab { appearance:none; border:0; background:transparent; padding:10px 14px;
-      font-size:14px; color:var(--ink-2); border-bottom:2px solid transparent; }
+    .tab { appearance:none; border:0; background:transparent; padding:11px 15px;
+      font-size:14px; color:var(--ink-2); border-bottom:2px solid transparent;
+      border-radius:var(--radius-sm) var(--radius-sm) 0 0; }
+    .tab:hover { color:var(--ink); background:var(--surface); }
     .tab.on { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
-    .ghost { appearance:none; background:transparent; border:1px solid var(--rule);
-      border-radius:7px; color:var(--ink-2); font-family:var(--mono); font-size:11px;
-      letter-spacing:0.06em; text-transform:uppercase; padding:5px 11px; }
-    .ghost:hover { color:var(--ink); }
-    .ghost[disabled] { opacity:0.5; cursor:default; }
-    .ghost.sm { padding:3px 9px; font-size:10px; }
-    .filter { display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
-    .seg { appearance:none; border:1px solid var(--rule); background:transparent;
-      border-radius:7px; padding:5px 11px; font-family:var(--mono); font-size:11.5px;
-      color:var(--ink-2); }
-    .seg.on { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+
+    .ghost { appearance:none; background:var(--surface); border:1px solid var(--rule);
+      border-radius:var(--radius-sm); color:var(--ink-2); font-family:var(--mono);
+      font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+      padding:6px 12px; transition:none; }
+    .ghost:hover { color:var(--ink); border-color:var(--ink-3); }
+    .ghost[disabled] { opacity:0.45; cursor:default; }
+    .ghost.sm { padding:4px 10px; font-size:10px; }
+
+    .filter { display:flex; gap:8px; align-items:center; margin-bottom:16px;
+      flex-wrap:wrap; }
+    .seg { appearance:none; border:1px solid var(--rule); background:var(--surface);
+      border-radius:var(--radius-sm); padding:6px 13px; font-family:var(--mono);
+      font-size:11.5px; color:var(--ink-2); }
+    .seg:hover { color:var(--ink); }
+    .seg.on { background:var(--accent); color:#fff; border-color:var(--accent);
+      font-weight:600; }
+
+    /* ── Karten ── */
     .card { background:var(--surface); border:1px solid var(--rule);
-      border-radius:var(--radius); padding:16px 18px 18px; margin-bottom:16px; min-width:0; }
+      border-radius:var(--radius); padding:var(--pad); margin-bottom:var(--gap);
+      min-width:0; }
     .card.err { color:var(--error-color, #d03b3b); }
+    .card.empty { text-align:center; padding:34px 20px; }
+    .card.empty b { display:block; margin-bottom:6px; }
     .head { display:flex; justify-content:space-between; align-items:center;
-      gap:12px; flex-wrap:wrap; margin-bottom:6px; }
-    .hint { color:var(--ink-2); font-size:13px; margin:0 0 12px; max-width:68ch; }
-    .prose { color:var(--ink-2); font-size:13.5px; line-height:1.62; margin:0 0 10px; max-width:64ch; }
+      gap:12px; flex-wrap:wrap; margin-bottom:4px; }
+    .head .right { display:inline-flex; align-items:center; gap:10px; }
+    h2 { margin:0; font-size:15.5px; font-weight:620; letter-spacing:-0.01em; }
+    .hint { color:var(--ink-2); font-size:13px; margin:0 0 14px; max-width:68ch; }
+    .hint.lead { margin:-4px 0 14px; }
+    .prose { color:var(--ink-2); font-size:13.5px; line-height:1.62; margin:0 0 10px;
+      max-width:64ch; }
     .prose b { color:var(--ink); }
-    code { font-family:var(--mono); font-size:12px; }
-    .hero { display:grid; grid-template-columns:minmax(170px,230px) 1fr; gap:28px; align-items:center; }
-    .big { font-size:52px; font-weight:650; line-height:1; letter-spacing:-0.04em;
-      display:block; margin:8px 0 6px; }
-    .pill { display:inline-block; font-family:var(--mono); font-size:10.5px;
-      letter-spacing:0.1em; text-transform:uppercase; padding:3px 9px; border-radius:999px;
-      border:1px solid var(--rule); }
+    code { font-family:var(--mono); font-size:12px; background:var(--plane);
+      padding:1px 5px; border-radius:4px; }
+
+    .badge { display:inline-flex; align-items:center; font-family:var(--mono);
+      font-size:10px; letter-spacing:0.09em; text-transform:uppercase;
+      padding:3px 9px; border-radius:999px; color:var(--c);
+      border:1px solid color-mix(in srgb, var(--c) 40%, transparent);
+      background:color-mix(in srgb, var(--c) 12%, transparent); }
+
+    .sk { height:13px; border-radius:6px; background:var(--rule); margin:11px 0; }
+
+    /* ── Hero ── */
+    .hero { display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:30px;
+      align-items:center; }
+    .big { font-size:58px; font-weight:680; line-height:1; letter-spacing:-0.045em;
+      display:block; margin:10px 0 7px; }
+    .pill { display:inline-flex; font-family:var(--mono); font-size:10.5px;
+      letter-spacing:0.1em; text-transform:uppercase; padding:4px 10px;
+      border-radius:999px; border:1px solid var(--rule); background:var(--plane); }
     .pill.good { color:#0ca30c; } .pill.critical { color:#d03b3b; }
-    .bands { display:flex; font-family:var(--mono); font-size:10px; letter-spacing:0.08em;
-      text-transform:uppercase; color:var(--ink-3); margin-top:6px; }
+    .bands { display:flex; font-family:var(--mono); font-size:10px;
+      letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-3);
+      margin-top:7px; }
     .bands span { text-align:center; }
-    .bands span:first-child { text-align:left; } .bands span:last-child { text-align:right; }
-    .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
-      gap:12px; margin-bottom:16px; }
+    .bands span:first-child { text-align:left; }
+    .bands span:last-child { text-align:right; }
+
+    /* ── Kacheln ── */
+    .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(176px,1fr));
+      gap:var(--gap); margin-bottom:var(--gap); }
     .tiles > * { min-width:0; }
     .tile { background:var(--surface); border:1px solid var(--rule);
-      border-radius:var(--radius); padding:13px 15px; }
-    .tile .v { font-size:26px; font-weight:620; letter-spacing:-0.03em; }
-    .tile .unit { font-family:var(--mono); font-size:11px; color:var(--ink-3); }
+      border-radius:var(--radius); padding:16px 18px 15px; }
+    .tile .v { font-size:30px; font-weight:650; letter-spacing:-0.035em; }
+    .tile .unit { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); }
+    .tile .note { display:block; margin-top:7px; font-family:var(--mono);
+      font-size:10.5px; color:var(--ink-3); letter-spacing:0.03em; }
     .row { display:flex; gap:8px; flex-wrap:wrap; }
-    .row.base { align-items:baseline; margin-top:5px; }
-    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .row.base { align-items:baseline; margin-top:7px; }
+
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--gap); }
     .grid2 > * { min-width:0; }
-    @media (max-width:880px) { .grid2 { grid-template-columns:1fr; }
-      .hero { grid-template-columns:1fr; gap:18px; } }
+    @media (max-width:900px) { .grid2 { grid-template-columns:1fr; }
+      .hero { grid-template-columns:1fr; gap:20px; } }
+
+    /* ── Diagramme ── */
     .scroll { overflow-x:auto; max-width:100%; }
     .scroll svg { display:block; width:100%; min-width:var(--mw,0); height:auto; }
-    .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:10px;
+    .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px;
       font-size:12.5px; color:var(--ink-2); }
     .legend span { display:inline-flex; align-items:center; gap:6px; }
     .legend i { width:14px; height:3px; border-radius:2px; display:inline-block; }
     .legend i.blk { width:11px; height:11px; border-radius:3px; }
-    .tablewrap { overflow-x:auto; margin-top:10px; }
+
+    /* ── Tabellen ── */
+    .tablewrap { overflow-x:auto; margin-top:12px; }
     table { border-collapse:collapse; width:100%; font-size:12.5px; }
-    th, td { text-align:right; padding:6px 10px; border-bottom:1px solid var(--rule);
+    th, td { text-align:right; padding:8px 11px; border-bottom:1px solid var(--rule);
       font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
     th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align:left; }
     th { font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
       color:var(--ink-3); font-weight:500; }
     tbody tr:last-child td { border-bottom:0; }
-    .plan { display:flex; flex-direction:column; }
-    .planrow { display:grid; grid-template-columns:70px 1fr auto auto; gap:12px;
-      align-items:center; padding:10px 0; border-bottom:1px solid var(--rule); }
+    tr.click { cursor:pointer; }
+    tr.click:hover td { background:var(--plane); }
+
+    /* ── Plan ── */
+    .plan { display:flex; flex-direction:column; margin-top:6px; }
+    .planrow { display:grid; grid-template-columns:72px 8px 1fr auto auto; gap:12px;
+      align-items:center; padding:11px 0; border-bottom:1px solid var(--rule); }
     .planrow:last-child { border-bottom:0; }
     .planrow .day { font-family:var(--mono); font-size:11px; color:var(--ink-3);
       text-transform:uppercase; letter-spacing:0.05em; }
+    .planrow .dot { width:8px; height:8px; border-radius:50%; }
     .planrow .kind { font-size:13.5px; font-weight:600; }
-    .planrow .detail { display:block; color:var(--ink-2); font-size:12.5px; margin-top:1px; }
+    .planrow .detail { display:block; color:var(--ink-2); font-size:12.5px;
+      margin-top:2px; overflow:hidden; text-overflow:ellipsis; }
     .planrow .load { font-family:var(--mono); font-size:12px; color:var(--ink-2); }
     .planrow.rest .kind { color:var(--ink-3); font-weight:500; }
-    @media (max-width:560px) { .planrow { grid-template-columns:62px 1fr auto; }
+    /* Ein Ruhetag lässt sich nicht verschieben — statt eines toten Knopfes
+       bleibt die Spalte leer, damit die Zeilen trotzdem fluchten. */
+    .spacerbtn { display:inline-block; width:104px; }
+    @media (max-width:620px) { .planrow { grid-template-columns:64px 8px 1fr auto; }
       .planrow .load { display:none; } }
-    .sheet { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9;
+
+    /* ── Dialoge ── */
+    .sheet { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9;
       display:flex; align-items:center; justify-content:center; padding:20px; }
-    .sheet .card { max-width:520px; width:100%; margin:0; max-height:84vh; overflow:auto; }
-    .sheet .card.wide { max-width:680px; }
-    tr.click { cursor:pointer; }
-    tr.click:hover td { background:var(--plane); }
+    .sheet .card { max-width:540px; width:100%; margin:0; max-height:86vh;
+      overflow:auto; }
+    .sheet .card.wide { max-width:700px; }
+    /* Hinweisblock im Dialog. Hieß früher .note und kollidierte damit mit
+       der Zusatzzeile in den Kacheln — gleicher Klassenname, zwei Begriffe,
+       und der border-top schlug in die Kacheln durch. */
+    .callout { border-top:1px solid var(--rule); margin-top:14px; padding-top:13px;
+      font-size:13px; }
+    .callout ul { margin:7px 0 11px; padding-left:18px; color:var(--ink-2); }
     .barcell { width:38%; padding-right:0; }
     .bar { display:block; height:7px; border-radius:3px; }
-    .verdict { display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr));
+    .verdict { display:grid; grid-template-columns:repeat(auto-fit,minmax(100px,1fr));
       gap:1px; background:var(--rule); border:1px solid var(--rule);
-      border-radius:8px; overflow:hidden; margin:12px 0; }
-    .verdict > div { background:var(--surface); padding:9px 11px; }
+      border-radius:var(--radius-sm); overflow:hidden; margin:14px 0; }
+    .verdict > div { background:var(--surface); padding:10px 12px; }
     .verdict .k { display:block; font-family:var(--mono); font-size:9.5px;
       letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-3); }
     .verdict .v { font-family:var(--mono); font-size:14px; font-weight:600;
       font-variant-numeric:tabular-nums; }
-    .note { border-top:1px solid var(--rule); margin-top:14px; padding-top:12px; font-size:13px; }
-    .note ul { margin:6px 0 10px; padding-left:18px; color:var(--ink-2); }
-    @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }
+
+    @media (prefers-reduced-motion:reduce) { * { animation:none !important;
+      transition:none !important; } }
     `;
   }
 }
