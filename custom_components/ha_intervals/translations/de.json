@@ -1,0 +1,41 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Intervals.icu verbinden",
+        "description": "Den API-Schlüssel findest du in intervals.icu unter Einstellungen → Developer.",
+        "data": {
+          "api_key": "API-Schlüssel",
+          "athlete_id": "Athlete-ID (z. B. i12345)"
+        }
+      },
+      "race": {
+        "title": "Wettkampf",
+        "description": "Ziel des Trainingsplans. Lässt sich später jederzeit ändern.",
+        "data": {
+          "race_date": "Renndatum",
+          "race_distance_km": "Distanz in km",
+          "race_goal_seconds": "Zielzeit in Sekunden (0 = offen)"
+        }
+      }
+    },
+    "error": {
+      "auth": "Schlüssel oder Athlete-ID werden abgelehnt.",
+      "connect": "intervals.icu ist nicht erreichbar.",
+      "unknown": "Unerwarteter Fehler — siehe Protokoll."
+    },
+    "abort": { "already_configured": "Dieser Athlet ist bereits eingerichtet." }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Einstellungen",
+        "data": {
+          "scan_interval_minutes": "Abrufintervall in Minuten",
+          "anthropic_api_key": "Anthropic-API-Schlüssel (leer = keine KI-Analyse)",
+          "analysis_model": "Modell für die Analyse"
+        }
+      }
+    }
+  }
+}

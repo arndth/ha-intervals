@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+frontend/dist/
+.DS_Store
+# Das gebaute Bundle wird von der GitHub-Action erzeugt, nicht eingecheckt.
+custom_components/ha_intervals/panel/*.js
+custom_components/ha_intervals/panel/*.map
+frontend/shot-*.png
+frontend/dist-dev/

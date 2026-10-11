@@ -1,0 +1,71 @@
+# Diese Datei ist die Dokumentation der Schnittstelle nach außen.
+# Jeder Service ist per REST aufrufbar:
+#   POST /api/services/ha_intervals/<name>?return_response
+
+sync:
+  name: Jetzt abrufen
+  description: Holt Aktivitäten, Wellness und Plan sofort von intervals.icu.
+  fields:
+    entry_id:
+      description: Nur nötig, wenn mehrere Athleten eingerichtet sind.
+      selector: { text: }
+
+verschieben:
+  name: Einheit verschieben
+  description: >-
+    Verschiebt, tauscht oder streicht eine geplante Einheit. Prüft fünf Regeln
+    und liefert bei Ablehnung die zulässigen Alternativen zurück.
+  fields:
+    event_id:
+      required: true
+      description: intervals.icu-Event-ID der Einheit.
+      selector: { text: }
+    ziel:
+      required: true
+      description: "heute, morgen, uebermorgen oder JJJJ-MM-TT"
+      example: morgen
+      selector: { text: }
+    modus:
+      default: tauschen
+      description: >-
+        tauschen = mit dem Zieltag tauschen · schieben = Rest rückt nach ·
+        streichen = Einheit entfällt (wird nie abgelehnt)
+      selector:
+        select:
+          options: [tauschen, schieben, streichen]
+    entry_id:
+      selector: { text: }
+
+umplanen:
+  name: Woche neu planen
+  description: >-
+    Lässt die Restwoche von Claude neu planen. Nur nötig, wenn kein zulässiger
+    Einzelzug mehr existiert — das normale Verschieben braucht keine KI.
+  fields:
+    ab_datum:
+      description: Ab wann neu geplant wird (Vorgabe heute).
+      selector: { text: }
+    grund:
+      description: Anlass, geht in den Prompt ein.
+      example: Zwei Einheiten wegen Erkältung ausgefallen
+      selector: { text: }
+    entry_id:
+      selector: { text: }
+
+analysieren:
+  name: Lauf analysieren
+  description: Bewertet eine Aktivität. Ohne Angabe die jüngste.
+  fields:
+    activity_id:
+      selector: { text: }
+    entry_id:
+      selector: { text: }
+
+plan_abfragen:
+  name: Plan abfragen
+  description: >-
+    Liefert alle geplanten Einheiten strukturiert zurück. Der Lesezugriff für
+    einen externen Agenten.
+  fields:
+    entry_id:
+      selector: { text: }

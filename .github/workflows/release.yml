@@ -1,0 +1,58 @@
+name: Release
+
+# Ein Tag erzeugt das Paket, das HACS herunterlädt. Der Ablauf baut das
+# Frontend-Bundle und legt es in die Komponente, bevor gezippt wird —
+# so kommt bei der Installation alles in einem Stück an.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Frontend bauen
+        working-directory: frontend
+        run: |
+          npm ci || npm install
+          npm run build
+
+      - name: Version aus dem Tag in manifest.json schreiben
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 - "$VERSION" <<'PY'
+          import json, sys, pathlib
+          p = pathlib.Path("custom_components/ha_intervals/manifest.json")
+          m = json.loads(p.read_text())
+          m["version"] = sys.argv[1]
+          p.write_text(json.dumps(m, indent=2, ensure_ascii=False) + "\n")
+          print("manifest.json -> ", m["version"])
+          PY
+
+      - name: Prüfen, dass das Bundle wirklich dabei ist
+        run: |
+          test -f custom_components/ha_intervals/panel/ha-intervals-panel.js \
+            || { echo "Panel-Bundle fehlt — Build fehlgeschlagen"; exit 1; }
+
+      - name: Tests
+        run: python3 tests/test_planner.py
+
+      - name: Paket schnüren
+        working-directory: custom_components/ha_intervals
+        run: zip -r ha_intervals.zip . -x '*.pyc' -x '__pycache__/*'
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: custom_components/ha_intervals/ha_intervals.zip
+          generate_release_notes: true
