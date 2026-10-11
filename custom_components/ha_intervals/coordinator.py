@@ -250,6 +250,15 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
 
         return await async_replan_week(self, ab, grund, key, model)
 
+    def cfg(self, key, default=None):
+        """Einstellung lesen: Optionen haben Vorrang vor den Einrichtungsdaten.
+
+        Die Wettkampfangaben werden bei der Einrichtung in `data` geschrieben
+        und später über die Optionen geändert. Ohne diesen Rückfall würde eine
+        Änderung still wirkungslos bleiben.
+        """
+        return self.entry.options.get(key, self.entry.data.get(key, default))
+
     @property
     def race_date(self) -> date | None:
         """Renndatum, nachsichtig gelesen.
@@ -259,7 +268,7 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
         `sensor.tage_bis_zum_rennen` verhindert. Ein unlesbares Datum darf
         höchstens "kein Renntag" bedeuten, nie einen Absturz.
         """
-        return parse_date(self.entry.data.get(CONF_RACE_DATE))
+        return parse_date(self.cfg(CONF_RACE_DATE))
 
     # ── Daten fürs Panel ─────────────────────────────────────────────────
 

@@ -36,9 +36,16 @@
         "data": {
           "scan_interval_minutes": "Abrufintervall in Minuten",
           "anthropic_api_key": "Anthropic-API-Schlüssel (leer = keine KI-Analyse)",
-          "analysis_model": "Modell für die Analyse"
-        }
+          "analysis_model": "Modell für die Analyse",
+          "race_date": "Renndatum",
+          "race_distance_km": "Distanz in km",
+          "race_goal_seconds": "Zielzeit in Sekunden (0 = offen)"
+        },
+        "description": "Wettkampf, Abrufintervall und KI-Analyse. Leeres Renndatum heißt: kein Plan und kein Countdown."
       }
+    },
+    "error": {
+      "date": "Datum nicht lesbar."
     }
   }
 }

@@ -356,7 +356,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         """Den Plan auslesen — der Lesezugriff für einen externen Agenten."""
         c = _coordinator(hass, call)
         return {
-            "renntag": c.entry.data.get(CONF_RACE_DATE),
+            "renntag": c.race_date.isoformat() if c.race_date else None,
             "einheiten": [
                 {
                     "event_id": s.event_id,

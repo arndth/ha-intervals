@@ -21,8 +21,10 @@ und ein Cache, damit das Panel sofort rendert.
    eintragen, dann Renndatum und Distanz.
 4. **„Laufen"** erscheint in der Seitenleiste.
 
-Der Anthropic-Schlüssel für die Analyse ist optional und wird unter
-*Konfigurieren* nachgetragen. Ohne ihn läuft alles außer der KI-Analyse.
+Renndatum, Distanz, Zielzeit, Abrufintervall und der optionale
+Anthropic-Schlüssel lassen sich jederzeit unter **Konfigurieren** ändern.
+Ohne Anthropic-Schlüssel läuft alles außer der KI-Analyse; ohne Renndatum
+alles außer Plan und Countdown.
 
 ### Aktualisieren
 

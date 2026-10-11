@@ -105,24 +105,63 @@ class IntervalsConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class IntervalsOptionsFlow(OptionsFlow):
+    """Nachträglich änderbar — auch der Wettkampf.
+
+    In v0.1.1 standen Renndatum, Distanz und Zielzeit nur im
+    Einrichtungsdialog. Wer sich vertippt hatte, musste die Integration
+    löschen und neu anlegen; dabei wäre die lokale Ablage verloren gegangen.
+    """
+
     async def async_step_init(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
+            iso = to_iso(user_input.get(CONF_RACE_DATE))
+            if user_input.get(CONF_RACE_DATE) and iso is None:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self._schema(),
+                    errors={CONF_RACE_DATE: "date"},
+                )
+            if iso:
+                user_input = {**user_input, CONF_RACE_DATE: iso}
             return self.async_create_entry(data=user_input)
+        return self.async_show_form(step_id="init", data_schema=self._schema())
+
+    def _schema(self) -> vol.Schema:
         o = self.config_entry.options
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_SCAN_INTERVAL,
-                        default=o.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=720)),
-                    vol.Optional(
-                        CONF_ANTHROPIC_KEY, default=o.get(CONF_ANTHROPIC_KEY, "")
-                    ): str,
-                    vol.Optional(
-                        CONF_MODEL, default=o.get(CONF_MODEL, DEFAULT_MODEL)
-                    ): str,
-                }
-            ),
+        d = self.config_entry.data
+
+        def vorbelegt(key, fallback):
+            """Optionen haben Vorrang, Einrichtungswerte sind der Rückfall."""
+            return o.get(key, d.get(key, fallback))
+
+        # Das Datumsfeld wird über suggested_value vorbelegt, nicht über
+        # default: ein leerer Vorgabewert "" ist für den DateSelector kein
+        # gültiges Datum und lässt das Formular scheitern.
+        race = to_iso(vorbelegt(CONF_RACE_DATE, None))
+        race_key = (
+            vol.Optional(CONF_RACE_DATE, description={"suggested_value": race})
+            if race
+            else vol.Optional(CONF_RACE_DATE)
+        )
+
+        return vol.Schema(
+            {
+                race_key: selector.DateSelector(),
+                vol.Optional(
+                    CONF_RACE_DISTANCE, default=vorbelegt(CONF_RACE_DISTANCE, 13.0)
+                ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_RACE_GOAL, default=vorbelegt(CONF_RACE_GOAL, 0)
+                ): vol.Coerce(int),
+                vol.Optional(
+                    CONF_SCAN_INTERVAL,
+                    default=o.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                ): vol.All(vol.Coerce(int), vol.Range(min=5, max=720)),
+                vol.Optional(
+                    CONF_ANTHROPIC_KEY, default=o.get(CONF_ANTHROPIC_KEY, "")
+                ): str,
+                vol.Optional(
+                    CONF_MODEL, default=o.get(CONF_MODEL, DEFAULT_MODEL)
+                ): str,
+            }
         )
