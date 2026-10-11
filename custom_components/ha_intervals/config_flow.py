@@ -158,9 +158,21 @@ class IntervalsOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_RACE_GOAL, default=vorbelegt(CONF_RACE_GOAL, 0)
                 ): vol.Coerce(int),
+                # NumberSelector statt vol.Any: Home Assistant kann
+                # `vol.Any("", vol.All(Coerce(int), Range))` nicht auf ein
+                # Bedienelement abbilden und rendert das Feld als `constant` —
+                # sichtbar, aber nicht ausfüllbar. Genau das ist in v0.4.0
+                # passiert. Ohne `default` bleibt das Feld leer lassbar;
+                # suggested_value belegt es vor.
                 vol.Optional(
-                    CONF_HR_MAX, default=vorbelegt(CONF_HR_MAX, "")
-                ): vol.Any("", vol.All(vol.Coerce(int), vol.Range(min=120, max=230))),
+                    CONF_HR_MAX,
+                    description={"suggested_value": vorbelegt(CONF_HR_MAX, None)},
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=120, max=230, step=1,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
                 vol.Optional(
                     CONF_VO2_CORRECTION,
                     default=vorbelegt(CONF_VO2_CORRECTION, DEFAULT_VO2_CORRECTION),
