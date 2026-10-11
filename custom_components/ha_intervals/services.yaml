@@ -87,6 +87,20 @@ plan_erstellen:
       description: Angestrebtes Renntempo als MM:SS pro Kilometer.
       example: "4:30"
       selector: { text: }
+    locker_pace:
+      description: >-
+        Dein gewohntes Dauerlauftempo als MM:SS. Ohne Angabe der Median aller
+        Läufe über 7 km aus den letzten 120 Tagen. Steuert die lockeren
+        Einheiten; die harten richten sich nach dem Ziel.
+      example: "5:30"
+      selector: { text: }
+    basis_km:
+      description: >-
+        Typische Laufdistanz. Ohne Angabe der Median deiner Läufe. Streckt die
+        Wochenvorlage auf deinen Umfang — der lange Lauf wird bei 1,5 ×
+        Renndistanz gedeckelt.
+      example: 10
+      selector: { number: { min: 3, max: 30, step: 0.5 } }
     start_pace:
       description: >-
         Heutiges Wettkampftempo als MM:SS. Ohne Angabe wird es aus dem besten

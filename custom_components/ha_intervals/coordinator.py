@@ -490,8 +490,44 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             "pace_s_km": round(r["seconds"] / r["km"]),
         }
 
+    async def async_profile(self) -> dict:
+        """Dauerlauftempo und typischer Umfang aus den echten Läufen.
+
+        Beides war in der ersten Fassung geraten: die lockeren Vorgaben kamen
+        aus dem Zieltempo, der Umfang aus einer Vorlage für Wiedereinsteiger.
+        Bei einem Läufer, der gewohnheitsmäßig 10 km um 5:24/km läuft, ergab
+        das 5-km-Einheiten bei 6:21/km — eine Vorgabe, die man ignoriert.
+        """
+        ab = (date.today() - timedelta(days=120)).isoformat()
+        lang = await self.store.async_query(
+            "SELECT pace_s_km FROM activities WHERE day >= ? AND km >= 7 "
+            "AND pace_s_km > 0 AND LOWER(REPLACE(kind,' ','')) IN "
+            "('run','trailrun','virtualrun','treadmill') ORDER BY pace_s_km",
+            (ab,),
+        )
+        alle = await self.store.async_query(
+            "SELECT km FROM activities WHERE day >= ? AND km >= 1 "
+            "AND LOWER(REPLACE(kind,' ','')) IN "
+            "('run','trailrun','virtualrun','treadmill') ORDER BY km",
+            (ab,),
+        )
+        easy = (
+            round(lang[len(lang) // 2]["pace_s_km"]) if lang else None
+        )
+        median_km = alle[len(alle) // 2]["km"] if alle else None
+        return {
+            "easy_pace_s": easy,
+            "median_km": round(median_km, 1) if median_km else None,
+            "laeufe": len(alle),
+        }
+
     async def async_build_plan(
-        self, dry_run: bool, race_pace_s: int, start_pace_s: int | None = None
+        self,
+        dry_run: bool,
+        race_pace_s: int,
+        start_pace_s: int | None = None,
+        easy_pace_s: int | None = None,
+        basis_km: float | None = None,
     ) -> dict:
         """Plan rechnen und auf Wunsch nach intervals.icu schreiben.
 
@@ -508,7 +544,22 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
         if start_pace_s is None:
             start_pace_s, bezug = await self.async_estimate_pace(distanz)
 
-        plan = build_plan(renntag, race_pace_s, start_pace_s)
+        profil = await self.async_profile()
+        if easy_pace_s is None:
+            easy_pace_s = profil.get("easy_pace_s")
+        if basis_km is None:
+            basis_km = profil.get("median_km")
+
+        # Die Vorlage ist auf einen 7-km-Longrun in Woche 1 ausgelegt.
+        # `scale` streckt sie auf den gewohnten Umfang; der lange Lauf wird
+        # bei 1,5 × Renndistanz gedeckelt, weil er darüber mehr kostet als
+        # er bringt.
+        scale = max(1.0, round((basis_km or 7.0) / 7.0, 2))
+        max_long = round(distanz * 1.5, 1)
+
+        plan = build_plan(
+            renntag, race_pace_s, start_pace_s, easy_pace_s, scale, max_long
+        )
         wochen = summary(plan)
         vorschau = {
             "ok": True,
@@ -519,6 +570,12 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
                 f"{start_pace_s // 60}:{start_pace_s % 60:02d}" if start_pace_s else None
             ),
             "bezugslauf": bezug,
+            "locker_pace": (
+                f"{easy_pace_s // 60}:{easy_pace_s % 60:02d}" if easy_pace_s else None
+            ),
+            "profil": profil,
+            "skalierung": scale,
+            "longrun_max_km": max_long,
             "einheiten": len(plan),
             "davon_kuenftig": len([s for s in plan if s.day >= date.today()]),
             "gesamt_km": round(sum(s.km for s in plan), 1),

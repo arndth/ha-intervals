@@ -135,6 +135,40 @@ def test_schnellerer_start_als_ziel_wird_ignoriert():
     assert "6:06" in w1.description   # 300 × 1,22, also Zielbezug
 
 
+def test_skalierung_hebt_den_umfang():
+    """Wer 10 km gewohnt ist, startet nicht mit 5-km-Läufen."""
+    klein = summary(build_plan(RENNEN, PACE))
+    gross = summary(build_plan(RENNEN, PACE, scale=1.45, max_long_km=19.5))
+    assert gross[0]["km"] > klein[0]["km"] * 1.3
+    assert max(w["km"] for w in gross) > max(w["km"] for w in klein) * 1.25
+
+
+def test_langer_lauf_wird_gedeckelt():
+    p = build_plan(RENNEN, PACE, scale=2.0, max_long_km=19.5)
+    lang = [s for s in p if s.kind == KIND_LONG]
+    assert max(s.km for s in lang) <= 19.5
+
+
+def test_renndistanz_bleibt_unskaliert():
+    p = build_plan(RENNEN, PACE, scale=1.45, max_long_km=19.5)
+    rennen = [s for s in p if "WETTKAMPF" in s.name][0]
+    assert rennen.km == 13.0
+
+
+def test_lockertempo_folgt_dem_dauerlauftempo_nicht_dem_ziel():
+    """Der Kern des Fehlers: lockere Läufe richten sich nach der heutigen
+    aeroben Form, nicht nach der Zielzeit im Januar."""
+    ohne = build_plan(RENNEN, 270, start_pace_s=294)
+    mit = build_plan(RENNEN, 270, start_pace_s=294, easy_pace_s=330)  # 5:30
+    e_ohne = [s for s in ohne if s.kind == KIND_EASY][0].description
+    e_mit = [s for s in mit if s.kind == KIND_EASY][0].description
+    assert "5:59" in e_ohne, e_ohne          # 294 × 1,22 = 358,7 s
+    assert "5:30" in e_mit, e_mit
+    # Die harten Einheiten bleiben vom Ziel bestimmt
+    q = [s for s in mit if "Renntempo" in s.name][0]
+    assert "4:30" in q.description
+
+
 def test_summary():
     wo = summary(plan())
     assert len(wo) == 13

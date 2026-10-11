@@ -115,6 +115,8 @@ BUILD_PLAN_SCHEMA = vol.Schema(
         # Ohne Angabe wird der heutige Stand aus den Läufen der letzten
         # 120 Tage geschätzt.
         vol.Optional("start_pace"): cv.string,
+        vol.Optional("locker_pace"): cv.string,
+        vol.Optional("basis_km"): vol.Coerce(float),
         vol.Optional("entry_id"): cv.string,
     }
 )
@@ -428,8 +430,22 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 raise HomeAssistantError(
                     f"'{start}' ist keine Pace. Erwartet wird MM:SS."
                 ) from None
+        locker = call.data.get("locker_pace")
+        locker_s = None
+        if locker:
+            try:
+                m, sek = str(locker).split(":")
+                locker_s = int(m) * 60 + int(sek)
+            except ValueError:
+                raise HomeAssistantError(
+                    f"'{locker}' ist keine Pace. Erwartet wird MM:SS."
+                ) from None
         result = await c.async_build_plan(
-            call.data.get("trocken", True), pace, start_s
+            call.data.get("trocken", True),
+            pace,
+            start_s,
+            locker_s,
+            call.data.get("basis_km"),
         )
         if result.get("ok") and not result.get("trocken"):
             hass.bus.async_fire(EVENT_PLAN_CHANGED, {

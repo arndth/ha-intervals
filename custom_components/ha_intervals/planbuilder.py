@@ -82,9 +82,24 @@ def _mmss(sec: int) -> str:
     return f"{sec // 60}:{sec % 60:02d}"
 
 
-def _describe(key: str, km: float, rp: int) -> str:
-    """Beschreibungstext mit konkreten Tempovorgaben."""
-    lo, lr = _pace(rp, "locker"), _pace(rp, "longrun")
+def _describe(key: str, km: float, rp: int, easy: int | None = None) -> str:
+    """Beschreibungstext mit konkreten Tempovorgaben.
+
+    `rp` steuert die harten Einheiten (vom Ziel her), `easy` die lockeren
+    (vom heutigen Dauerlauftempo her). Beides aus dem Ziel abzuleiten war
+    falsch: lockeres Laufen richtet sich nach der aktuellen aeroben Form,
+    nicht nach dem, was man im Januar laufen will. In der ersten Fassung
+    standen dadurch 6:21/km als "locker" bei einem Läufer, der seine
+    Dauerläufe gewohnheitsmäßig um 5:15/km läuft — eine Vorgabe, die man
+    schlicht ignoriert.
+    """
+    lo = easy or _pace(rp, "locker")
+    # Lockerer Lauf und langer Lauf liegen im selben aeroben Bereich; der
+    # Unterschied ist die Dauer, nicht das Tempo. Eine eigene, schnellere
+    # Longrun-Pace anzusetzen wäre die alte Lehre und würde den langen Lauf
+    # zur zweiten Qualitätseinheit machen — bei drei Einheiten pro Woche
+    # wäre das eine zu viel.
+    lr = lo if easy else _pace(rp, "longrun")
     sw, iv, rt = _pace(rp, "schwelle"), _pace(rp, "intervall"), _pace(rp, "renntempo")
     texte = {
         "locker": f"{km:g} km locker, {_mmss(lo)}–{_mmss(lo + 25)}/km. Unterhaltung muss möglich sein.",
@@ -133,8 +148,35 @@ def _week_pace(week: int, weeks: int, start_s: int, goal_s: int) -> int:
     return round(start_s + (goal_s - start_s) * anteil)
 
 
+def scale_template(scale: float, max_long_km: float) -> list:
+    """Wochenvorlage auf den Umfang des Läufers strecken.
+
+    Die Vorlage ist für einen Wiedereinsteiger mit 5-km-Läufen geschrieben.
+    Wer 10 km gewohnt ist, bekommt sie entsprechend gestreckt — der lange
+    Lauf aber gedeckelt, weil er sonst über das Dreifache der Renndistanz
+    hinauswächst und mehr kostet als er bringt.
+    """
+    out = []
+    for phase, di, do, so in WEEKS_13:
+        def skaliert(e, lang=False):
+            name, km, key = e
+            if key == "rennen":
+                return e                      # Renndistanz bleibt, was sie ist
+            neu = km * scale
+            if lang:
+                neu = min(neu, max_long_km)
+            return (name, round(neu * 2) / 2, key)   # auf halbe km runden
+        out.append((phase, skaliert(di), skaliert(do), skaliert(so, lang=True)))
+    return out
+
+
 def build_plan(
-    race_date: date, race_pace_s: int, start_pace_s: int | None = None
+    race_date: date,
+    race_pace_s: int,
+    start_pace_s: int | None = None,
+    easy_pace_s: int | None = None,
+    scale: float = 1.0,
+    max_long_km: float = 16.0,
 ) -> list[PlannedSession]:
     """13 Wochen rückwärts vom Renntag.
 
@@ -143,13 +185,14 @@ def build_plan(
     Fällt das Rennen auf einen anderen Tag, wird die Woche entsprechend
     verschoben, die Abstände bleiben gleich.
     """
-    weeks = len(WEEKS_13)
+    vorlage = scale_template(scale, max_long_km) if scale != 1.0 else WEEKS_13
+    weeks = len(vorlage)
     # Montag der Rennwoche
     race_week_monday = race_date - timedelta(days=race_date.weekday())
     first_monday = race_week_monday - timedelta(weeks=weeks - 1)
 
     out: list[PlannedSession] = []
-    for w, (phase, di, do, so) in enumerate(WEEKS_13):
+    for w, (phase, di, do, so) in enumerate(vorlage):
         monday = first_monday + timedelta(weeks=w)
         letzte_woche = w == weeks - 1
         for offset, (name, km, key) in ((1, di), (3, do), (6, so)):
@@ -172,7 +215,7 @@ def build_plan(
                     name=f"{name} {km:g} km" if name != "WETTKAMPF" else f"WETTKAMPF {km:g} km",
                     km=float(km),
                     load=round(km * LOAD_FACTOR[kind]),
-                    description=_describe(key, km, bezug),
+                    description=_describe(key, km, bezug, easy_pace_s),
                     week=w + 1,
                     phase=phase,
                 )
