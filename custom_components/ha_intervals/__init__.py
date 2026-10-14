@@ -404,6 +404,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                     "last": s.load,
                     "km": s.km,
                     "beschreibung": s.description,
+                    "syntax": s.syntax,
                 }
                 for s in c.planned_sessions()
             ],
