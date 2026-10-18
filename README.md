@@ -9,6 +9,10 @@ nur hier angezeigt — von dort synchronisiert er auf die Uhr. Lokal liegt nur,
 was intervals.icu nicht kennt: KI-Analysen, Planbegründungen, Pace-Dauer-Kurven
 und ein Cache, damit das Panel sofort rendert.
 
+**Übergabe an jemand anderen?** → [HANDOVER.md](HANDOVER.md): Schnittstelle,
+Entscheidungen samt Gründen, die Fallen dieses Projekts und der aktuelle
+Stand.
+
 ---
 
 ## Installation

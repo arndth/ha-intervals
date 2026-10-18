@@ -10,6 +10,20 @@ sync:
       description: Nur nötig, wenn mehrere Athleten eingerichtet sind.
       selector: { text: }
 
+daten_abfragen:
+  name: Alles abfragen
+  description: >-
+    Liefert in einem Aufruf alles, was das Dashboard zeigt: Lastverlauf,
+    Wochenaggregate mit Zonenzeiten, Trainings, Plan, Bestzeiten, VO2max und
+    die vorliegenden Analysen. Der Haupt-Lesezugriff — auch fürs Panel.
+  fields:
+    tage:
+      default: 91
+      description: Zeitraum in Tagen.
+      selector: { number: { min: 7, max: 365, step: 1 } }
+    entry_id:
+      selector: { text: }
+
 verschieben:
   name: Einheit verschieben
   description: >-
