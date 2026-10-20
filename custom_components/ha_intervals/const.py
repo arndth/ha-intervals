@@ -38,7 +38,7 @@ DEFAULT_MODEL: Final = "claude-opus-5"
 # ihn persönlich; ohne Kalibrierung ist der Verlauf aussagekräftig, der
 # Absolutwert nicht.
 DEFAULT_VO2_CORRECTION: Final = 1.0
-HISTORY_DAYS: Final = 180
+HISTORY_DAYS: Final = 200  # sechs rollierende Kalendermonate inkl. Monatsgrenzen
 
 # ── Services ─────────────────────────────────────────────────────────────
 SERVICE_SYNC: Final = "sync"

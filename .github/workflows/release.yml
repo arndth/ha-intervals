@@ -27,6 +27,7 @@ jobs:
         run: |
           npm ci || npm install
           npm run build
+          node --test tests/*.test.mjs
 
       - name: Version aus dem Tag in manifest.json schreiben
         run: |

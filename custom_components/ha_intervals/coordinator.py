@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import IntervalsAuthError, IntervalsClient, IntervalsConnectionError
 from .const import (
@@ -81,7 +82,7 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
     # ── Abruf ────────────────────────────────────────────────────────────
 
     async def _async_update_data(self) -> dict:
-        today = date.today()
+        today = dt_util.now().date()
         try:
             activities = await self.client.async_get_activities(
                 today - timedelta(days=HISTORY_DAYS), today
@@ -133,7 +134,7 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
         latest = wellness[-1] if wellness else {}
         ctl, atl = latest.get("ctl"), latest.get("atl")
         return {
-            "stand": date.today().isoformat(),
+            "stand": today.isoformat(),
             "wochen_km": round(woche[0]["km"], 1) if woche else 0.0,
             "ctl": ctl,
             "atl": atl,
@@ -378,18 +379,18 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
 
     async def async_panel_data(self, tage: int = 91) -> dict:
         """Alles, was das Dashboard braucht, in einem Aufruf."""
-        heute = date.today()
+        heute = dt_util.now().date()
         ab = heute - timedelta(days=tage)
 
         verlauf = await self.store.async_query(
             "SELECT day, ctl, atl, form FROM wellness "
-            "WHERE day >= ? ORDER BY day",
-            (ab.isoformat(),),
+            "WHERE day >= ? AND day <= ? ORDER BY day",
+            (ab.isoformat(), heute.isoformat()),
         )
         aktivitaeten = await self.store.async_query(
             "SELECT id, day, name, kind, km, seconds, load, hr_avg, pace_s_km, raw "
-            "FROM activities WHERE day >= ? ORDER BY day DESC",
-            (ab.isoformat(),),
+            "FROM activities WHERE day >= ? AND day <= ? ORDER BY day DESC, id DESC",
+            (ab.isoformat(), heute.isoformat()),
         )
         analysen = await self.store.async_query(
             "SELECT activity_id, created, model, verdict, prose "
@@ -405,6 +406,7 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
 
         return {
             "stand": heute.isoformat(),
+            "history_days": tage,
             "andere_sportarten": andere,
             "renntag": self.race_date.isoformat() if self.race_date else None,
             "tage_bis_rennen": (self.race_date - heute).days
@@ -414,7 +416,7 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             "wochen": self._weekly(laeufe),
             "trainings": [
                 {**{k: a[k] for k in a if k != "raw"}, "vo2max": vo2_je_id.get(a["id"])}
-                for a in laeufe[:60]
+                for a in laeufe
             ],
             "vo2max": {
                 "hr_max": hrmax,

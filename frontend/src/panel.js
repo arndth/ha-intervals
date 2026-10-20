@@ -11,6 +11,7 @@
  */
 
 import { CSS_TOKENS, detectMode, palette, phaseColor } from "./theme.js";
+import { renderOverview } from "./overview-view.js";
 import {
   esc,
   fmt,
@@ -24,6 +25,7 @@ import {
 } from "./charts.js";
 
 const VIEWS = [
+  { id: "overview", label: "Übersicht" },
   { id: "form", label: "Form" },
   { id: "plan", label: "Trainingsplan" },
   { id: "best", label: "Bestzeiten" },
@@ -46,7 +48,7 @@ const ART = {
 class HaIntervalsPanel extends HTMLElement {
   constructor() {
     super();
-    this._view = "form";
+    this._view = "overview";
     this._days = 91;
     this._data = null;
     this._error = null;
@@ -89,7 +91,8 @@ class HaIntervalsPanel extends HTMLElement {
     this._busy = true;
     this._render();
     try {
-      const res = await this._call("daten_abfragen", { tage: this._days });
+      // Auch mit kurzem Diagrammfilter sechs Monate für die Startseite laden.
+      const res = await this._call("daten_abfragen", { tage: 200 });
       this._data = res?.response ?? null;
       this._error = null;
     } catch (err) {
@@ -175,12 +178,14 @@ class HaIntervalsPanel extends HTMLElement {
     } else {
       body =
         this._view === "form"
-          ? this._viewForm(d, p)
+          ? this._viewForm(this._periodData(d), p)
+          : this._view === "overview"
+          ? this._viewOverview(d, p)
           : this._view === "plan"
           ? this._viewPlan(d, p)
           : this._view === "best"
           ? this._viewBest(d, p)
-          : this._viewRuns(d);
+          : this._viewRuns(this._periodData(d));
     }
 
     this.shadowRoot.innerHTML = `<style>${this._css()}</style>
@@ -213,14 +218,14 @@ class HaIntervalsPanel extends HTMLElement {
   _progress(d, p) {
     const plan = d?.plan || [];
     if (!plan.length || d?.tage_bis_rennen == null) return "";
-    const heute = new Date().toISOString().slice(0, 10);
-    const erledigt = plan.filter((s) => s.tag < heute).length;
-    const pct = Math.round((erledigt / plan.length) * 100);
+    const heute = d.stand;
+    const vergangen = plan.filter((s) => s.tag < heute).length;
+    const pct = Math.round((vergangen / plan.length) * 100);
     const aktuell = plan.find((s) => s.tag >= heute);
     return `<div class="progress">
       <div class="track"><span style="width:${pct}%;background:${p.fitness}"></span></div>
       <div class="meta">
-        <span>${erledigt} von ${plan.length} Einheiten</span>
+        <span>${vergangen} von ${plan.length} Plandaten vergangen · keine Erfüllungsquote</span>
         ${aktuell ? `<span>Als Nächstes: ${esc(aktuell.name)} am ${esc(fmt.day(aktuell.tag))}</span>` : ""}
       </div>
     </div>`;
@@ -282,6 +287,22 @@ class HaIntervalsPanel extends HTMLElement {
         this._render();
       })
     );
+  }
+
+  _periodData(d) {
+    const cutoff = new Date(`${d.stand}T00:00:00Z`);
+    cutoff.setUTCDate(cutoff.getUTCDate() - this._days);
+    const since = cutoff.toISOString().slice(0, 10);
+    return {
+      ...d,
+      verlauf: (d.verlauf || []).filter((x) => x.day >= since && x.day <= d.stand),
+      wochen: (d.wochen || []).filter((x) => x.start >= since && x.start <= d.stand),
+      trainings: (d.trainings || []).filter((x) => x.day >= since && x.day <= d.stand),
+    };
+  }
+
+  _viewOverview(d) {
+    return renderOverview(d, (...args) => this._tile(...args));
   }
 
   /* ── Ansicht: Form ───────────────────────────────────────────────────── */
@@ -360,7 +381,7 @@ class HaIntervalsPanel extends HTMLElement {
   /* ── Ansicht: Trainingsplan ──────────────────────────────────────────── */
 
   _viewPlan(d, p) {
-    const heute = new Date().toISOString().slice(0, 10);
+    const heute = d.stand;
     const kommend = (d.plan || []).filter((s) => s.tag >= heute).slice(0, 24);
     if (!kommend.length) {
       return `<section class="card empty"><b>Kein Plan hinterlegt</b>
@@ -768,6 +789,26 @@ class HaIntervalsPanel extends HTMLElement {
 
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--gap); }
     .grid2 > * { min-width:0; }
+    /* ── Überblick ── */
+    .overview-tiles { margin:16px 0; grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .overview-days { border-top:1px solid var(--rule); }
+    .overview-day { display:grid; grid-template-columns:108px 1fr; gap:14px;
+      padding:9px 10px; border-bottom:1px solid var(--rule); }
+    .overview-day.today { background:var(--plane); }
+    .overview-day .daylabel { font-family:var(--mono); font-size:12px; font-weight:600; }
+    .overview-day small { display:block; font-size:10px; color:var(--ink-3); }
+    .overview-day .daycontent { display:flex; flex-wrap:wrap; gap:8px 16px;
+      align-items:center; min-width:0; font-size:13px; }
+    .overview-day .muted { color:var(--ink-3); }
+    .overview-day .done { border:0; background:transparent; text-align:left;
+      color:var(--accent); text-decoration:underline; padding:0; font-size:12px; }
+    .overview-stats { display:flex; align-items:baseline; flex-wrap:wrap;
+      gap:8px 15px; margin:9px 0; color:var(--ink-2); font-family:var(--mono); font-size:12px; }
+    .overview-stats b { font-size:24px; color:var(--ink); }
+    .overview-desc { white-space:pre-line; max-height:100px; overflow:auto; }
+    h3 { margin:6px 0; font-size:17px; font-weight:630; }
+    @media (max-width:620px) { .overview-tiles { grid-template-columns:1fr; }
+      .overview-day { grid-template-columns:65px 1fr; gap:8px; } }
     @media (max-width:900px) { .grid2 { grid-template-columns:1fr; }
       .hero { grid-template-columns:1fr; gap:20px; } }
 
