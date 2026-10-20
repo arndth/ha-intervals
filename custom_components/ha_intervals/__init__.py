@@ -54,6 +54,7 @@ from .const import (
     SERVICE_ANALYSE,
     SERVICE_BUILD_PLAN,
     SERVICE_DETAIL,
+    SERVICE_ROUTE,
     SERVICE_EXPORT,
     SERVICE_GET_DATA,
     SERVICE_GET_PLAN,
@@ -224,9 +225,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_ANALYSE,
                 SERVICE_GET_PLAN,
                 SERVICE_BUILD_PLAN,
-    SERVICE_DETAIL,
-    SERVICE_EXPORT,
-    SERVICE_GET_DATA,
+                SERVICE_DETAIL,
+                SERVICE_ROUTE,
+                SERVICE_EXPORT,
+                SERVICE_GET_DATA,
             ):
                 hass.services.async_remove(DOMAIN, svc)
     return ok
@@ -482,9 +484,14 @@ def _async_register_services(hass: HomeAssistant) -> None:
         c = _coordinator(hass, call)
         return await c.async_activity_detail(str(call.data["activity_id"]))
 
+    async def _route(call: ServiceCall) -> ServiceResponse:
+        c = _coordinator(hass, call)
+        return await c.async_activity_route(str(call.data["activity_id"]))
+
     for name, handler, schema in (
         (SERVICE_SYNC, _sync, SIMPLE_SCHEMA),
         (SERVICE_DETAIL, _detail, DETAIL_SCHEMA),
+        (SERVICE_ROUTE, _route, DETAIL_SCHEMA),
         (SERVICE_EXPORT, _export, EXPORT_SCHEMA),
         (SERVICE_BUILD_PLAN, _build_plan, BUILD_PLAN_SCHEMA),
         (SERVICE_GET_DATA, _get_data, DATA_SCHEMA),

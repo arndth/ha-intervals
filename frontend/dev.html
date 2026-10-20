@@ -166,6 +166,14 @@ el.hass = {
         wochen: DATEN.wochen.slice(-Math.max(2, Math.round(tage / 7))),
       }});
     }
+    if (service === "strecke_abfragen") {
+      // Synthetische Testgeometrie, ausschließlich für die lokale Designvorschau.
+      const punkte = Array.from({length:120}, (_, i) => {
+        const t = i / 119 * Math.PI * 2;
+        return [52.99 + Math.sin(t) * 0.015, 8.34 + Math.cos(t) * 0.026 + Math.sin(3*t)*0.004];
+      });
+      return Promise.resolve({response:{ok:true, punkte}});
+    }
     if (service === "training_details") {
       // Splits eines 10ers mit negativem Split und steigendem Puls
       const paces = [336, 332, 329, 327, 325, 322, 320, 316, 311, 304];

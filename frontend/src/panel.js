@@ -12,6 +12,7 @@
 
 import { CSS_TOKENS, detectMode, palette, phaseColor } from "./theme.js";
 import { renderOverview } from "./overview-view.js";
+import { OVERVIEW_CSS } from "./overview-style.js";
 import {
   esc,
   fmt,
@@ -56,6 +57,8 @@ class HaIntervalsPanel extends HTMLElement {
     this._open = new Set(); // aufgeklappte Tabellen
     this._moving = null; // Einheit im Verschieben-Dialog
     this._detail = null; // geöffnetes Training
+    this._route = null; // GPS wird getrennt vom allgemeinen Datenabruf geladen
+    this._streetMap = false; // Drittanbieter-Kacheln nur nach Klick
     this.attachShadow({ mode: "open" });
   }
 
@@ -100,6 +103,25 @@ class HaIntervalsPanel extends HTMLElement {
     }
     this._busy = false;
     this._render();
+    if (this._view === "overview") this._loadRoute();
+  }
+
+  async _loadRoute() {
+    const id = this._data?.trainings?.[0]?.id;
+    if (!id || this._route?.id === String(id)) return;
+    this._route = { id: String(id), loading: true, points: [] };
+    this._render();
+    try {
+      const response = await this._call("strecke_abfragen", { activity_id: String(id) });
+      if (this._route?.id !== String(id)) return;
+      const result = response?.response;
+      this._route = { id: String(id), points: result?.punkte || [],
+        error: result?.ok ? result?.hinweis : result?.grund || "GPS nicht verfügbar." };
+    } catch (err) {
+      if (this._route?.id !== String(id)) return;
+      this._route = { id: String(id), points: [], error: String(err?.message || err) };
+    }
+    this._render();
   }
 
   async _sync() {
@@ -107,6 +129,7 @@ class HaIntervalsPanel extends HTMLElement {
     this._render();
     try {
       await this._call("sync");
+      this._route = null;
       await this._load();
     } catch (err) {
       this._error = String(err?.message || err);
@@ -247,6 +270,7 @@ class HaIntervalsPanel extends HTMLElement {
       b.addEventListener("click", () => {
         this._view = b.dataset.tab;
         this._render();
+        if (this._view === "overview") this._loadRoute();
       })
     );
     r.querySelectorAll("[data-range]").forEach((b) =>
@@ -277,6 +301,12 @@ class HaIntervalsPanel extends HTMLElement {
         this._move(b.dataset.id, b.dataset.ziel, b.dataset.do)
       )
     );
+    r.querySelectorAll('[data-streets]').forEach((b) =>
+      b.addEventListener('click', () => {
+        this._streetMap = b.dataset.streets === 'on';
+        this._render();
+      })
+    );
     r.querySelectorAll("[data-detail]").forEach((row) =>
       row.addEventListener("click", () => this._openDetail(row.dataset.detail))
     );
@@ -301,8 +331,9 @@ class HaIntervalsPanel extends HTMLElement {
     };
   }
 
-  _viewOverview(d) {
-    return renderOverview(d, (...args) => this._tile(...args));
+  _viewOverview(d, p) {
+    return renderOverview(d, (...args) => this._tile(...args),
+      { route: this._route, streets: this._streetMap, palette: p });
   }
 
   /* ── Ansicht: Form ───────────────────────────────────────────────────── */
@@ -789,26 +820,6 @@ class HaIntervalsPanel extends HTMLElement {
 
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--gap); }
     .grid2 > * { min-width:0; }
-    /* ── Überblick ── */
-    .overview-tiles { margin:16px 0; grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .overview-days { border-top:1px solid var(--rule); }
-    .overview-day { display:grid; grid-template-columns:108px 1fr; gap:14px;
-      padding:9px 10px; border-bottom:1px solid var(--rule); }
-    .overview-day.today { background:var(--plane); }
-    .overview-day .daylabel { font-family:var(--mono); font-size:12px; font-weight:600; }
-    .overview-day small { display:block; font-size:10px; color:var(--ink-3); }
-    .overview-day .daycontent { display:flex; flex-wrap:wrap; gap:8px 16px;
-      align-items:center; min-width:0; font-size:13px; }
-    .overview-day .muted { color:var(--ink-3); }
-    .overview-day .done { border:0; background:transparent; text-align:left;
-      color:var(--accent); text-decoration:underline; padding:0; font-size:12px; }
-    .overview-stats { display:flex; align-items:baseline; flex-wrap:wrap;
-      gap:8px 15px; margin:9px 0; color:var(--ink-2); font-family:var(--mono); font-size:12px; }
-    .overview-stats b { font-size:24px; color:var(--ink); }
-    .overview-desc { white-space:pre-line; max-height:100px; overflow:auto; }
-    h3 { margin:6px 0; font-size:17px; font-weight:630; }
-    @media (max-width:620px) { .overview-tiles { grid-template-columns:1fr; }
-      .overview-day { grid-template-columns:65px 1fr; gap:8px; } }
     @media (max-width:900px) { .grid2 { grid-template-columns:1fr; }
       .hero { grid-template-columns:1fr; gap:20px; } }
 
@@ -875,6 +886,7 @@ class HaIntervalsPanel extends HTMLElement {
     .verdict .v { font-family:var(--mono); font-size:14px; font-weight:600;
       font-variant-numeric:tabular-nums; }
 
+    ${OVERVIEW_CSS}
     @media (prefers-reduced-motion:reduce) { * { animation:none !important;
       transition:none !important; } }
     `;

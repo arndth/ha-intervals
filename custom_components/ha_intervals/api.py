@@ -137,6 +137,17 @@ class IntervalsClient:
             return {}
         return {s["type"]: s.get("data", []) for s in raw if "type" in s}
 
+    async def async_get_route(self, activity_id: str) -> list[list[float]]:
+        """Nur GPS laden: latitude in data, longitude in data2."""
+        from .route import compact_route
+
+        raw = await self._request(
+            "GET", f"/activity/{activity_id}/streams",
+            params={"types": "latlng"},
+        )
+        stream = next((s for s in raw or [] if s.get("type") == "latlng"), None)
+        return compact_route(stream.get("data") or [], stream.get("data2") or []) if stream else []
+
     # ── Schreiben ────────────────────────────────────────────────────────
 
     async def async_create_event(self, payload: dict) -> dict | None:

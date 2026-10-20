@@ -125,6 +125,18 @@ plan_erstellen:
     entry_id:
       selector: { text: }
 
+strecke_abfragen:
+  name: GPS-Strecke eines Laufs
+  description: >-
+    Liefert maximal 240 gültige Koordinaten eines bekannten Laufs zur
+    Kartendarstellung. Keine Koordinaten im allgemeinen Dashboard-Datenabruf.
+  fields:
+    activity_id:
+      required: true
+      selector: { text: }
+    entry_id:
+      selector: { text: }
+
 training_details:
   name: Training im Detail
   description: >-

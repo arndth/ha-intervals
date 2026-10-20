@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { overviewModel, sixMonthsAgo } from '../src/overview.js';
 import { renderOverview } from '../src/overview-view.js';
+import { routeGraphic } from '../src/route-map.js';
 
 const sample = {
   stand: '2026-10-20', history_days: 200,
@@ -42,15 +43,28 @@ test('empty data produces honest zero-record summary, not fabricated training', 
   assert.equal(m.limitedHistory, true);
 });
 
-test('dashboard renders all six sections and escapes user-provided names', () => {
-  const html = renderOverview({...sample, trainings:[{...sample.trainings[0], name:'<script>'}]},
-    (label, value) => `<div>${label}: ${value}</div>`);
-  for (const title of ['Aktuelle Woche', 'Letztes Training', 'Nächstes Training',
-    'Zusammenfassung dieser Woche', 'Letzte 4 abgeschlossene Wochen', 'Letzte 6 Monate']) {
+test('dashboard renders sections, distinct plan and actual, and escapes names', () => {
+  const html = renderOverview({...sample, trainings:[{...sample.trainings[0], name:'<script>'}]});
+  for (const title of ['Letzter Lauf', 'Wochenfortschritt', 'Wochenkalender',
+    'Vier abgeschlossene Wochen', 'Sechs Monate im Blick', 'Konstanz', 'VO₂max-Schätzung']) {
     assert.ok(html.includes(title), title);
   }
   assert.ok(html.includes('&lt;script&gt;'));
   assert.ok(!html.includes('<script>'));
   assert.ok(html.includes('data-detail="today"'));
   assert.ok(html.includes('data-tab="plan"'));
+  assert.ok(html.includes('Kein Eintrag ist kein belegter Ruhetag'));
+});
+
+test('route is drawn locally, OSM tiles only after opt-in', () => {
+  const points=[[52.9,8.3],[52.91,8.31],[52.92,8.32]];
+  const local=routeGraphic(points), external=routeGraphic(points,true);
+  assert.ok(local.includes('GPS-Streckenverlauf'));
+  assert.ok(!local.includes('tile.openstreetmap.org'));
+  assert.ok(external.includes('tile.openstreetmap.org'));
+  const html=renderOverview(sample,null,{route:{id:'today',points},streets:false});
+  assert.ok(html.includes('Straßenkarte laden'));
+  assert.ok(!html.includes('tile.openstreetmap.org'));
+  assert.ok(renderOverview(sample,null,{route:{id:'today',points},streets:true}).includes('OpenStreetMap-Mitwirkende'));
+  assert.equal(routeGraphic([[Infinity,8.3]]),'');
 });

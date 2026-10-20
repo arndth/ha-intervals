@@ -12,8 +12,7 @@ export default defineConfig({
       formats: ["es"],
       fileName: () => "ha-intervals-panel.js",
     },
-    rollupOptions: { output: { inlineDynamicImports: true } },
     target: "es2020",
-    minify: "esbuild",
+    minify: "oxc",
   },
 });

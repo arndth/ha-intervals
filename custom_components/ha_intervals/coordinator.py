@@ -732,6 +732,20 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict]):
             "fehler": fehler,
         }
 
+    async def async_activity_route(self, activity_id: str) -> dict:
+        """GPS nur für einen bekannten Lauf und nur auf expliziten Panel-Abruf."""
+        rows = await self.store.async_query(
+            "SELECT id, kind FROM activities WHERE id = ?", (str(activity_id),)
+        )
+        if not rows or not is_run(rows[0]):
+            return {"ok": False, "grund": "Kein bekannter Lauf.", "punkte": []}
+        try:
+            points = await self.client.async_get_route(str(activity_id))
+        except (IntervalsConnectionError, IntervalsAuthError) as err:
+            return {"ok": False, "grund": f"GPS nicht abrufbar: {err}", "punkte": []}
+        return {"ok": True, "activity_id": str(activity_id), "punkte": points,
+                "hinweis": None if points else "Für diesen Lauf sind keine GPS-Punkte verfügbar."}
+
     # ── Einzelnes Training ───────────────────────────────────────────────
 
     async def async_activity_detail(self, activity_id: str) -> dict:

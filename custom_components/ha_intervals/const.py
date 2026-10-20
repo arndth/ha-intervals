@@ -49,6 +49,7 @@ SERVICE_GET_PLAN: Final = "plan_abfragen"
 SERVICE_GET_DATA: Final = "daten_abfragen"
 SERVICE_BUILD_PLAN: Final = "plan_erstellen"
 SERVICE_DETAIL: Final = "training_details"
+SERVICE_ROUTE: Final = "strecke_abfragen"
 SERVICE_EXPORT: Final = "plan_exportieren"
 
 # ── Events auf dem HA-Bus ────────────────────────────────────────────────
